@@ -28,12 +28,17 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-import sys, traceback, asyncore
+import sys, traceback, asyncore, argparse
 from server.config import Config
 from server.log import Log
 from server.server import NDMPServer, RequestHandler
-from server.daemon import daemon
-import threading, tempfile
+from tools import daemon, lockfile
+from tools.daemon import pidlockfile
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-d", "--daemon", action="store_true", help="Run as daemon")
+args = parser.parse_args()
 
 try:
     cfg = Config('opendmp.conf').getcfg()
@@ -48,21 +53,28 @@ except:
     print(traceback.format_exc().splitlines()[-1], file=sys.stderr)
     print('Something wrong with logfile, exiting', file=sys.stderr)
     sys.exit(1)
+    
 
-try:
-    server = NDMPServer((cfg['HOST'], int(cfg['PORT'])), RequestHandler)
-except:
-    stdlog.error(sys.exc_info()[1])
-    sys.exit(1)
+server = NDMPServer((cfg['HOST'], int(cfg['PORT'])), RequestHandler)
 
-class NDMPdaemon(daemon):
-    def run(self):
+if args.daemon:
+    context = daemon.DaemonContext(
+        working_directory='/var/lib/opendmp',
+        umask=0o002,
+        pidfile=lockfile.FileLock('/var/run/opendmp.pid'),
+        )
+    
+    context.signal_map = {
+        signal.SIGTERM: server.shutdown(),
+        signal.SIGHUP: 'terminate'
+    }
+    
+    with daemon.DaemonContext():
+            server.serve_forever()
+else:
+    try:
         server.serve_forever()
-NDMPserver = NDMPdaemon(pidfile=tempfile.mkstemp(text=True)[1])
-
-try:
-    NDMPserver.start()
-except:
-    stdlog.error(sys.exc_info())
-finally:
-    NDMPserver.stop()
+    except:
+        stdlog.error(sys.exc_info()[1])
+    finally:
+        server.shutdown()
