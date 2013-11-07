@@ -16,7 +16,7 @@ class Config:
                         'SUPPORTED_NDMP_VERSIONS': ['v4','v3'],
                         'BUFSIZE': '10240',
                         'DATA_PORT_RANGE': '10001-10020',
-                        'DATA_TIMEOUT': '300',
+                        'DATA_TIMEOUT': '5',
                         'DUMPDATES': '/etc/dumpdates',
                         'EMULATE_NETAPP': 'False',
                         'EMULATE_CELERRA': 'False'

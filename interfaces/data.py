@@ -169,6 +169,9 @@ class start_backup():
         data_thread = Data(record)
         data_thread.start()
         threads.append(data_thread)
+        
+        with record.data['lock']:
+            record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
 
 
     def reply_v4(self, record):
@@ -259,9 +262,13 @@ class start_recover():
             return
         stdlog.debug(command_line)
         
-        # Launch the recover monitoring thread
-        t = Data(record)
-        t.start()
+        # Launch the recover thread
+        data_thread = Data(record)
+        data_thread.start()
+        threads.append(data_thread)
+        
+        with record.data['lock']:
+            record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
         
         # Launch the recover process
         with open(record.data['bu_fifo'] + '.err', 'w', encoding='utf-8') as error:

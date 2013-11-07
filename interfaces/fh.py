@@ -10,7 +10,6 @@ from tools.config import Config; cfg = Config.cfg; c = Config
 import time, os, re, traceback
 from xdr import ndmp_const as const, ndmp_type as type
 import tools.utils as ut
-from tools.bitstring import BitArray, BitStream
 from xdr.ndmp_pack import NDMPPacker
 
 class add_file():

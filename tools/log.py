@@ -27,7 +27,7 @@ class Log:
         
         if self.stdlog.isEnabledFor(logging.DEBUG):
             formatter = logging.Formatter(
-                '%(threadName)s %(funcName)s: %(message)s'
+                '0x%(thread)x: %(message)s'
                 )
         else:
             formatter = logging.Formatter('%(asctime)s - %(levelname)s -  %(threadName)s - %(message)s', "%Y-%m-%d %H:%M:%S")

@@ -59,7 +59,7 @@ class data_halted():
         # Body
         body = type.ndmp_notify_data_halted_request()
         body.reason = record.data['halt_reason']
-        body.text_reason = b'\n'.join(x for x in record.data['error'])
+        body.text_reason = b'\n'.join(repr(x).encode() for x in record.data['error'])
         p.pack_ndmp_notify_data_halted_request(body)
         stdlog.debug(body)
         record.queue.put(p.get_buffer())

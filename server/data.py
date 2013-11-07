@@ -12,6 +12,7 @@ class Data(threading.Thread):
     def __init__(self, record):
         threading.Thread.__init__(self, name='Data-' + repr(threading.activeCount()))
         self.record = record
+        self.errmsg = None
         
     def run(self):
         try:
@@ -22,14 +23,16 @@ class Data(threading.Thread):
                 stdlog.info('Starting recover of ' + self.record.data['env']['FILESYSTEM'])
                 self.recover()
         except (OSError, ValueError, UnboundLocalError, BrokenPipeError) as e:
-            self.record.data['retcode'] = -1
-            stdlog.error(e)
+            stdlog.error('operation failed: ' + repr(e))
+            self.errmsg = e
         finally:
             self.terminate()
-            self.record.fh['barrier'].wait() # wait for File History to send all logs
+            if self.record.data['operation'] == const.NDMP_DATA_OP_BACKUP:
+                self.record.fh['barrier'].wait() # wait for File History to send all logs
+                if self.record.data['retcode'] == 0:
+                    self.update_dumpdate()
             nt.data_halted().post(self.record)
-            stdlog.info('Data operation finished')
-            stdlog.info('closing status ' + repr(self.record.data['retcode']))
+            stdlog.info('Data operation finished status ' + repr(self.record.data['retcode']))
             sys.exit()
 
     def backup(self):
@@ -42,22 +45,25 @@ class Data(threading.Thread):
 
     def recover(self):
         with open(self.record.data['bu_fifo'],'wb') as file:
-            self.record.queue.put(nt.data_read().post(self.record))
+            nt.data_read().post(self.record)
             while not self.record.data['equit'].is_set():
-                data = self.record.data['fd'].recv(1024)
+                data = self.record.data['fd'].recv(4096)
                 with self.record.data['lock']:
                     self.record.data['stats']['current'] += file.write(data)
                 if not data: return
             
-    
     def terminate(self):
         try:
             self.record.data['process'].wait()
             self.record.data['process'].poll()
-            self.record.data['retcode'] = self.record.data['process'].returncode
-            with open(self.record.data['bu_fifo'] + '.err', 'rb') as logfile:
-                for line in logfile:
-                  self.record.data['error'].append(line.strip())
+            if self.errmsg:
+                self.record.data['retcode'] = 255
+                self.record.data['error'].append(self.errmsg)
+            else:    
+                self.record.data['retcode'] = self.record.data['process'].returncode
+                with open(self.record.data['bu_fifo'] + '.err', 'rb') as logfile:
+                    for line in logfile:
+                      self.record.data['error'].append(line.strip())
             self.record.data['fd'].close()
             # cleanup temporary files
             for tmpfile in [self.record.data['bu_fifo'] + '.err', 
@@ -65,8 +71,7 @@ class Data(threading.Thread):
                             self.record.data['bu_fifo']]:
                 if tmpfile is not None: ut.clean_file(tmpfile)
         except (OSError, ValueError, AttributeError) as e:
-            stdlog.error(e)
-            stdlog.debug(traceback.print_exc())
+            stdlog.error('terminate operation failed:' + repr(e))
             
         with self.record.data['lock']:
             self.record.data['state'] = const.NDMP_DATA_STATE_HALTED
@@ -74,18 +79,16 @@ class Data(threading.Thread):
             if (self.record.data['retcode'] == 0):
                 self.record.data['halt_reason'] = const.NDMP_DATA_HALT_SUCCESSFUL
             else:
-                stdlog.error(self.record.data['error'])
                 self.record.error = const.NDMP_ILLEGAL_STATE_ERR
                 self.record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
             
-        if self.record.data['operation'] == const.NDMP_DATA_OP_BACKUP:
-            try:
-                # Update dumpdates
-                self.record.data['dumpdates'].update({(self.record.data['env']['FILESYSTEM'],
-                                                       self.record.data['env']['LEVEL']):int(time.time())})
-                ut.write_dumpdates('.'.join([cfg['DUMPDATES'], self.record.data['bu_type']]),
-                                   self.record.data['dumpdates'])
-            except (OSError, ValueError, UnboundLocalError) as e:
-                self.record.data['retcode'] = -1
-                stdlog.error(e)
-                stdlog.debug(traceback.print_exc())
+            
+    def update_dumpdate(self):            
+        try:
+            # Update dumpdates
+            self.record.data['dumpdates'].update({(self.record.data['env']['FILESYSTEM'],
+                                                   self.record.data['env']['LEVEL']):int(time.time())})
+            ut.write_dumpdates('.'.join([cfg['DUMPDATES'], self.record.data['bu_type']]),
+                               self.record.data['dumpdates'])
+        except (OSError, ValueError, UnboundLocalError) as e:
+            stdlog.error('update dumpdate failed' + repr(e))
