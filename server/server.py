@@ -1,129 +1,146 @@
-import socketserver, socket, threading, traceback, struct, sys
-from queue import Queue, Empty
+'''This module implements the base socket server that receive NDMP request
+and fork a subprocess'''
+
+
+from tools.config import Config; cfg = Config.cfg; c = Config; threads = Config.threads
+from tools.log import Log; stdlog = Log.stdlog
+import threading, queue, socket, traceback, struct, sys, select, os, time, multiprocessing
 from xdr.record import Record
-from server.config import Config; cfg = Config.cfg
-from server.log import Log; stdlog = Log.stdlog
 import xdr.ndmp_const as const
 from interfaces import notify
 
-
-class RequestHandler(socketserver.BaseRequestHandler):
-        
-    def setup(self):
-        # Create a new record for each connection
+class Consumer(threading.Thread):
+    
+    def __init__(self, connection, address):
+        threading.Thread.__init__(self)
+        self.connection = connection
+        self.address = address
+        # Create a new Record for each connection
+        self.record = threading.local()
         self.record = Record()
-        # Create a new queue for each connection
-        self.wqueue = Queue()
-        self.record.queue = self.wqueue
-        self.wqueue.put_nowait(notify.connection_status().post(shutdown=False))
-        
-    def handle(self):
+        self.task_queue = queue.Queue()
+        self.record.queue = queue.Queue()
+        # Notify the DMA of the connection
+        notify.connection_status().post(self.record)
+
+    def run(self):
         try:
-            while True:
-                if not (self.wqueue.empty()):
-                    self.send()
-                else:
-                    self.record.message = self.recv()
-                    self.record.RECV()
-                    if self.record.h.message in [const.NDMP_CONNECT_CLOSE, const.NDMP_SHUTDOWN]:
-                        break
-                    self.wqueue.put_nowait(self.record.SEND())
-                # Cleanup self.record for next iteration
-                self.record.reset()
-                #input('next')
-        except IOError:
-            stdlog.info('Connection from ' + repr(self.client_address) + ' finished')
-        except:
-            stdlog.debug('*'*60)
-            stdlog.debug(traceback.format_exc())
-            stdlog.debug('*'*60)
-            self.wqueue.put_nowait(notify.connection_status().post(shutdown=True))
+            while self.connection:
+                time.sleep(0.001)
+                (read, write, error) = select.select([self.connection], [self.connection], [])
+                if write:
+                    while not self.record.queue.empty():
+                        message = self.record.queue.get()
+                        if message: sendXDR(self.connection, message) 
+                if read:        
+                    message = recvXDR(self.connection)
+                    self.task_queue.put(message)
+                    answer = self.record.run_task(message)
+                    self.record.queue.put(answer)
+                if error:
+                    break
+        except socket.error:
+            stdlog.info('Connection with ' + repr(self.address) + ' closed')
         finally:
-            self.record.close()
-            self.finish()
+            self.connection.close()
+            sys.exit()
 
-    def finish(self):
-        self.request.close()
-        self.record = None
-        
-    def send(self):
-        """Prepare and send messages using record marking standard"""
-        while not self.wqueue.empty():
-            try:
-                message = self.wqueue.get()
-            except Empty:
-                stdlog.error('nothing to send')
-                raise
-            x = len(message) | 0x80000000
-            header = struct.pack('>L', x | len(message))
-            try:
-                self.request.send(header + message)
-            except socket.error as e:
-                stdlog.error(repr(e))
-                raise
-            except (OSError, IOError) as e :
-                stdlog.error(e.strerror)
-                raise
+class NDMPServer(object):
     
-    def recv(self):
-        """Receive and unpack data using record marking standard"""
-        last = False
-        data = b''
-        while not last:
-            rec_mark = self._recv_all(4)
-            count = struct.unpack('>L', rec_mark)[0]
-            last = count & 0x80000000
-            if last:
-                count &= 0x7fffffff
-            data += self._recv_all(count)
-        return data
+    threads = []
     
-    def _recv_all(self, n):
-        """Receive n bytes, or raise an error"""
-        data = b''
-        while n > 0:
-            newdata = self.request.recv(n)
-            count = len(newdata)
-            if not count:
-                raise IOError
-            data += newdata
-            n -= count
-        return data
-
-
-class NDMPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-
-    allow_reuse_address = True
-    request_queue_size = int(cfg['MAX_THREADS'])
-    timeout = int(cfg['SOCKET_TIMEOUT'])
-    
-    def server_activate(self):
+    def __init__(self, hostname, port):
+        self.hostname = hostname
+        self.port = port
         stdlog.info('Starting NDMP server')
-        super().server_activate()
-
-    def handle_timeout(self):
-        stdlog.error('Timeout')
-        super().handle_timeout()
-    
-    def verify_request(self, request, client_address):
-        stdlog.info('Received request from ' + repr(client_address))
-        stdlog.debug('Active threads: ' + repr(threading.activeCount()))
-        '''The first message sent on the connection MUST be an
-            NDMP_NOTIFY_CONNECTION_STATUS message from the NDMP Server.'''
-        return True
-            
-    def process_request(self, request, client_address):
-        stdlog.debug('Processing Request')
-        """Start a new thread to process the request,
-        giving a meaningful name to the thread"""
-        t = threading.Thread(name='Server-' + repr(threading.activeCount()),
-                             target = self.process_request_thread,
-                             args = (request, client_address))
+ 
+    def start(self):
+        # Start a thread that will cleanup zombie children
+        t = threading.Thread(target=self.cleanup_processes)
         t.start()
         
-    def close_request(self, request):
-        stdlog.info('Request closed')
+        # Start the initial socket listening on port 10000
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((self.hostname, self.port))
+        server.listen(1)
         
-    def shutdown(self):
-        stdlog.info('Closing NDMP server')
-        super().shutdown()
+        while True:
+            # Wait for connection
+            connection, address = server.accept()
+            # Someone have connected to port 10000
+            stdlog.info('Connection from' + repr(address))
+            
+            # Start the process that will handle this communication
+            # This new process will be a DATASERVER or TAPESERVER
+            p = Consumer(connection, address)
+            p.start()
+            global threads
+            threads.append(p)
+                    
+                    
+            
+    def cleanup_processes(self):
+        '''Will loop and join the threads and subprocesses'''
+        while True:
+            time.sleep(0.1)
+            for thread in threads:
+                thread.join(1)
+            multiprocessing.active_children()
+        
+    def handle(rqueue, wqueue):
+        stdlog.info('Started process ' + repr(os.getpid()))
+        # Create a new record for each connection
+        record = Record(wqueue)
+        # Notify the DMA of the connection
+        notify.connection_status().post(record)
+            
+        try:
+            while True:
+                record.message = rqueue.get()
+                print(record.message)
+                record.RECV()
+                if record.h.message in [const.NDMP_CONNECT_CLOSE, const.NDMP_SHUTDOWN]:
+                    break
+                record.SEND()
+                # Cleanup self.record for next iteration
+                record.reset()
+        finally:
+            record.close()
+            return
+        
+    
+def sendXDR(connection, message):
+        """Prepare and send messages using record marking standard"""
+        x = len(message) | 0x80000000
+        header = struct.pack('>L', x | len(message))
+        try:
+            connection.send(header + message)
+        except OSError as e :
+            stdlog.error(e)
+            raise
+        
+def recvXDR(connection):
+    """Receive and unpack data using record marking standard"""
+    last = False
+    data = b''
+    while not last:
+        rec_mark = _recv_all(connection, 4)
+        count = struct.unpack('>L', rec_mark)[0]
+        last = count & 0x80000000
+        if last:
+            count &= 0x7fffffff
+        data += _recv_all(connection, count)
+    return data
+
+def _recv_all(connection, n):
+    """Receive n bytes, or raise an error"""
+    data = b''
+    while n > 0:
+        newdata = connection.recv(n)
+        count = len(newdata)
+        if not count:
+            raise socket.error
+        data += newdata
+        n -= count
+    return data

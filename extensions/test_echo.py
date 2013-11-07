@@ -1,32 +1,33 @@
-''' NDMP provides for a server extension mechanism that enables the 
-               following: 
+'''NDMP Extensions Test Message 
+   The extension class 0x7ff0, interface 00, message 00 will be used as 
+   a extension test message. All NDMP servers that implement extensions 
+   SHOULD also implement the test message. The DMA and server 
+   implementer can use this message as a vehicle for testing their 
+   implementation of extensions discovery and negotiation, as well as 
+   error handling. In order to test the discovery and negotiation 
+   process, two versions of the 0x7ff0 class with different message 
+   definitions will be defined. '''
 
-                  - The NDMP community can develop and standardize new 
-                  functionality in NDMP without requiring a revision of core NDMP 
-
-                  - Implementers can expose proprietary functionality in NDMP 
-                  Server implementations through NDMP Server extensions 
-
-                  - DMAs can discover and negotiate the use of these extensions 
-
-                  - Extensions are managed at two levels: standard extensions 
-                  developed or ratified by the NDMP community, and proprietary 
-                  extensions developed for the individual implementations 
-
-                  - Extensions are versioned, and can evolve over time 
-'''
-
-from ctypes import Structure
-
-
-class ndmp_test_echo_request(Structure):
-    _fields_ = [()]
-
-
-class ndmp_test_echo_reply(Structure):
-    _fields_ = [()]
-
-
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config 
+import xdr.ndmp_const as const
+ 
+class ndmp_test_echo_v1():
     
+    def get_class_id(self):
+        return '0x7ff0'
+    def get_version(self):
+        return '1'
     
+    def reply(self, record):
+        pass
+
+class ndmp_test_echo_v2():
     
+    def get_class_id(self):
+        return '0x7ff0'
+    def get_version(self):
+        return '2'
+    
+    def reply(self, record):
+        pass

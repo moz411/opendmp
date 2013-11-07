@@ -6,8 +6,8 @@ From Linux kernel  /usr/include/scsi/sg.h
 
 See http://tldp.org/HOWTO/SCSI-Generic-HOWTO/sg_io_hdr_t.html
 '''
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
 import xdr.ndmp_const as const
 from ctypes import *
 from fcntl import ioctl

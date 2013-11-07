@@ -1,10 +1,10 @@
 '''This module create a socket for Mover operations
 and process the data stream'''
 
-import socket, threading, sys, traceback, time
+import socket, threading, sys, traceback
 from tools import ipaddress as ip
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 from interfaces import notify as nt
 
@@ -43,9 +43,9 @@ class Mover(threading.Thread):
             self.recover()
                 
     def backup(self):
-        while not self.record.mover['equit'].is_set():
+        while self.record.mover['equit'] == False:
             try:
-                self.record.device.data = self.sock.recv(self.record.mover['record_size'])
+                self.record.device.data = self.sock.recv(4096)
                 self.record.device.write(self.record)
                 with self.record.mover['lock']:
                     self.record.mover['bytes_moved'] += len(self.record.device.data)
@@ -60,7 +60,7 @@ class Mover(threading.Thread):
     
     def recover(self):
         self.record.device.count = self.record.mover['record_size']
-        while not self.record.mover['equit'].is_set():
+        while self.record.mover['equit'] == False:
             try:
                 self.record.device.read(self.record)
                 with self.record.mover['lock']:
@@ -75,6 +75,7 @@ class Mover(threading.Thread):
                 self.terminate()
             
     def terminate(self):
+        self.record.mover['equit'] = False
         try:
             self.fd.close()
         except socket.error as e:

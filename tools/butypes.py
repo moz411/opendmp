@@ -1,8 +1,8 @@
 '''This configuration file defines the different backup and restore tools available for 
 every platform'''
 
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 from xdr.ndmp_type import ndmp_butype_info, ndmp_pval
 
@@ -26,8 +26,11 @@ tar = ndmp_butype_info(butype_name=b'tar',
                               )
             )
 
-tar.options = {'backup': '-cP',
-               'recover': '-x -C'}
+tar.command = {'backup': 'star -c -no-fifo -no-statistics f=UNIXSOCKET -find . INCREMENTAL -exec stat -r {} \;',
+               'recover': '-x -no-fifo -no-statistics'}
+tar.incremental = '-newer NEWER'
+tar.rename = '-s |OLD|NEW|'
+
 
 wbadmin = ndmp_butype_info(butype_name=b'wbadmin',
                        default_env=[ndmp_pval(name=b'USER', value=cfg['USER'].encode())],
@@ -40,7 +43,6 @@ wbadmin = ndmp_butype_info(butype_name=b'wbadmin',
                               const.NDMP_BUTYPE_RECOVER_UTF8
                               )
             )
-
 
 ntbackup = ndmp_butype_info(butype_name=b'ntbackup',
                        default_env=[ndmp_pval(name=b'USER', value=cfg['USER'].encode())],

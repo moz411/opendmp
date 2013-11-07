@@ -11,9 +11,12 @@
    If any of the Connect Interface messages fail, the DMA SHOULD close
    the connection using NDMP_CONNECTION_CLOSE.'''
 
+from tools.config import Config; cfg = Config.cfg
+from tools.log import Log; stdlog = Log.stdlog
+import hashlib
 import xdr.ndmp_const as const
-from server.config import Config; cfg = Config.cfg
-from server.log import Log; stdlog = Log.stdlog
+from xdr.ndmp_type import ndmp_auth_data, ndmp_auth_md5
+
 
 class open():
     '''This message negotiates the protocol version to be used between the
@@ -45,6 +48,32 @@ class client_auth():
     request_v3 = request_v4
     reply_v3 = reply_v4
 
+
+class server_auth():
+    '''This optional request is used by the DMA to force the NDMP Server to
+        authenticate itself'''
+
+    def request_v4(self, record):
+        try:
+            assert(record.b.client_attr.auth_type == const.NDMP_AUTH_MD5)
+            record.challenge = record.b.client_attr.challenge
+        except(AssertionError):
+            record.error = const.NDMP_ILLEGAL_ARGS_ERR
+        
+    def reply_v4(self, record):
+        # TODO: still not working with ndmfs test
+        m = hashlib.md5()
+        password = cfg['PASSWORD'].encode()
+        m.update(record.challenge + password)
+        record.b.auth_result = ndmp_auth_data
+        record.b.auth_result.auth_type = const.NDMP_AUTH_MD5
+        record.b.auth_result.auth_md5 = ndmp_auth_md5
+        record.b.auth_result.auth_md5.user = cfg['USER'].encode()
+        record.b.auth_result.auth_md5.auth_digest = m.digest()
+
+    request_v3 = request_v4
+    reply_v3 = reply_v4
+
 class close():
     '''This message is used when the client wants to close the NDMP
         connection'''
@@ -56,18 +85,3 @@ class close():
 
     request_v3 = request_v4
     reply_v3 = reply_v4
-
-
-class server_auth():
-    '''This optional request is used by the DMA to force the NDMP Server to
-        authenticate itself'''
-
-    def request_v4(self, record):
-        pass
-        
-    def reply_v4(self, record):
-        record.error = const.NDMP_NOT_SUPPORTED_ERR
-
-    request_v3 = request_v4
-    reply_v3 = reply_v4
-

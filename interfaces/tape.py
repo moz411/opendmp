@@ -7,8 +7,8 @@ DMA also uses the Tape interface to position the tape during
 backups and recoveries.
 '''
 
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config 
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config 
 import xdr.ndmp_const as const
 from tools import utils as ut
 from tools.device import Device

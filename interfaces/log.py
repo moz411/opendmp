@@ -2,10 +2,10 @@
 diagnostic data to the DMA. This data is used by the client to
 monitor the progress of the currently running data operation and to
 diagnose problems.'''
-               
+
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config               
 import time
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const, ndmp_type as type
 from tools import utils as ut
 from xdr.ndmp_pack import NDMPPacker

@@ -3,8 +3,8 @@ These messages enable the NDMP Server to notify the DMA that
 the NDMP Server requires attention.
 '''
 import time
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const, ndmp_type as type
 from tools import utils as ut
 from xdr.ndmp_pack import NDMPPacker
@@ -13,7 +13,7 @@ class connection_status():
     '''This message is sent in response to a connection establishment
         attempt.'''
 
-    def post(self, shutdown=False):
+    def post(self, record, shutdown=False):
         p = NDMPPacker()
         # Header
         header = type.ndmp_header()
@@ -35,7 +35,8 @@ class connection_status():
             body.reason = const.NDMP_SHUTDOWN
             body.text_reason = 'Aborted'
         p.pack_ndmp_notify_connected_request(body)
-        return p.get_buffer()
+        stdlog.debug(body)
+        record.queue.put(p.get_buffer())
         
 
 class data_halted():
@@ -58,10 +59,10 @@ class data_halted():
         # Body
         body = type.ndmp_notify_data_halted_request()
         body.reason = record.data['halt_reason']
-        body.text_reason = b'Finished status ' + repr(record.data['process'].returncode).encode()
+        body.text_reason = b'\n'.join(x for x in record.data['error'])
         p.pack_ndmp_notify_data_halted_request(body)
         stdlog.debug(body)
-        return p.get_buffer()
+        record.queue.put(p.get_buffer())
 
 class data_read():
     '''This message is used to notify the DMA that the NDMP Server wants to
@@ -85,7 +86,8 @@ class data_read():
         body.offset = ut.long_long_to_quad(record.data['offset'])
         body.length = ut.long_long_to_quad(record.data['length'])
         p.pack_ndmp_notify_data_read_request(body)
-        return p.get_buffer()
+        stdlog.debug(body)
+        record.queue.put(p.get_buffer())
 
 
 class mover_halted():
@@ -113,7 +115,7 @@ class mover_halted():
         body.text_reason = b'Finished'
         p.pack_ndmp_notify_mover_halted_request(body)
         stdlog.debug(body)
-        return p.get_buffer()
+        record.queue.put(p.get_buffer())
 
 
 class mover_paused():
@@ -137,7 +139,9 @@ class mover_paused():
         
         # Body
         body = type.ndmp_notify_mover_paused_request()
-        body.reason = record.mover['pause_reason']
-        body.seek_position = record.mover['seek_position']
+        with record.mover['lock']:
+            body.reason = record.mover['pause_reason']
+            body.seek_position = ut.long_long_to_quad(record.mover['seek_position'])
         p.pack_ndmp_notify_mover_paused_request(body)
-        return p.get_buffer()
+        stdlog.debug(body)
+        record.queue.put(p.get_buffer())

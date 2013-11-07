@@ -7,8 +7,8 @@
                   special features of SCSI backup devices. 
 '''
 import os, traceback
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config 
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config 
 import xdr.ndmp_const as const
 import tools.utils as ut
 from tools.device import Device

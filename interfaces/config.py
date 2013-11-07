@@ -1,20 +1,29 @@
 '''This interface allows the DMA to discover the configuration of the  NDMP Server.'''
+
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config 
 import os, re
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config 
 import xdr.ndmp_const as const
 import tools.utils as ut
 from xdr.ndmp_type import (ndmp_auth_attr, ndmp_class_list, 
                            ndmp_class_version)
+import inspect
 
 class get_host_info():
     '''This request is used to get information about the host on which the NDMP Server is running.'''
     
     def reply_v4(self, record):
-        record.b.hostname = c.hostname.encode()
-        record.b.os_type = c.system.encode()
-        record.b.os_vers = c.release.encode()
+        if (cfg['EMULATE_NETAPP'] == 'True'):
+            record.b.os_type = b'Netapp'
+            record.b.os_vers = b'NetApp Release 8.0R1'
+        elif (cfg['EMULATE_CELERRA'] == 'True'):
+            record.b.os_type = b'DartOS'
+            record.b.os_vers = b'EMC2 Celerra File Server.T.7.1.65.8'
+        else:
+            record.b.os_type = c.system.encode()
+            record.b.os_vers = c.release.encode()
         record.b.hostid = c.hostid
+        record.b.hostname = c.hostname.encode()
         record.b.auth_type = [const.NDMP_AUTH_MD5]
 
     reply_v3 = reply_v4
@@ -25,9 +34,18 @@ class get_server_info():
     
     def reply_v4(self, record):
         if(record.connected):
-            record.b.vendor_name = c.vendor_name.encode()
-            record.b.product_name = c.product_name.encode()
-            record.b.revision_number = c.__version__.encode()
+            if (cfg['EMULATE_NETAPP'] == 'True'):
+                record.b.vendor_name = b'Netapp'
+                record.b.product_name = b'Super Filer'
+                record.b.revision_number = b'8.0R1'
+            elif (cfg['EMULATE_CELERRA'] == 'True'):
+                record.b.vendor_name = b'EMC'
+                record.b.product_name = b'CELERRA'
+                record.b.revision_number = b'T.7.1.65.8'
+            else:
+                record.b.vendor_name = c.vendor_name.encode()
+                record.b.product_name = c.product_name.encode()
+                record.b.revision_number = c.__version__.encode()
         else:
             record.b.vendor_name = b''
             record.b.product_name = b''
@@ -48,14 +66,13 @@ class get_connection_type():
 class get_auth_attr():
     '''This message is used by the DMA to obtain the attributes of the
         authentication methods supported by the server.'''
-    
     def request_v4(self, record):
         pass
-    
+        
     def reply_v4(self, record):
         record.b.server_attr = ndmp_auth_attr(const.NDMP_AUTH_MD5, record.challenge)
-        
-    request_v3 = request_v4
+    
+    request_v3 = request_v4    
     reply_v3 = reply_v4
         
         
@@ -64,10 +81,15 @@ class get_butype_info():
         Server and the capability of each supported backup type.'''
     
     def reply_v4(self, record):
-        from tools import butypes as bu
+        # TODO: implement a real plugin system
+        
         record.b.butype_info = []
         if(c.system in c.Unix):
-            record.b.butype_info.append(bu.tar)
+            from bu import tar as bu
+            info = bu.info
+            if (cfg['EMULATE_NETAPP'] == 'True'):
+                info.butype_name = b'dump'
+            record.b.butype_info.append(bu.info)
         elif(c.system == 'Windows'):
             if(c.release >= 7):
                 record.b.butype_info.append(bu.wbadmin)
@@ -81,19 +103,24 @@ class get_butype_info():
 
 class get_fs_info():
     '''This message is used to query information about the file systems on
-               the NDMP Server host.'''
+        the NDMP Server host.'''
     
     def reply_v4(self, record):
         record.b.fs_info = []
         
         if(c.system in c.Unix):
-            for line in os.popen('mount -t ufs,gfs,reiserfs,ext2,ext3,ext4').readlines():
-                fs = ut.add_filesystem_unix(line, local='y') # local fs
-                record.b.fs_info.append(fs)
+            for line in os.popen('mount -t zfs,ufs,gfs,reiserfs,ext2,ext3,ext4').readlines():
+                try:
+                    fs = ut.add_filesystem_unix(line, local='y') # local fs
+                    record.b.fs_info.append(fs)
+                except OSError:
+                    pass
             for line in os.popen('mount -t nfs,smbfs,cifs,vboxfs,vmfs,fuse').readlines():
-                ut.add_filesystem_unix(line, local='n') # remote fs
-                record.b.fs_info.append(fs)
-                print(record.b)
+                try:
+                    fs = ut.add_filesystem_unix(line, local='n') # remote fs
+                    record.b.fs_info.append(fs)
+                except OSError:
+                    pass
                 
     reply_v3 = reply_v4
 
@@ -144,24 +171,37 @@ class get_scsi_info():
 
 class get_ext_list():
     '''NDMP_CONFIG_GET_EXT_LIST is used to request which classes of
-               extensions and versions are available.'''
-    
+       extensions and versions are available.'''
     def reply_v4(self, record):
-        classlist = ndmp_class_list()
-        #classlist.ext_class_id = 0x0000 # Core NDMP
-        # classlist.ext_class_id = 0x0001 - 0x0007: Standard NDMP extensions
-        classlist.ext_class_id = 0x7ff0 #Class 0x7ff0 V1 Echo Interface
-        classlist.ext_version = [1]
-        record.b.class_list = [classlist]
-        #record.error = const.NDMP_NOT_SUPPORTED_ERR
-        # TODO: use reserved class 21E0.0000 û 21E3.FFFF
         
+        # TODO: improve this very simple module loader
+        classlist = ndmp_class_list()
+        record.b.class_list = []
+        curdir = os.path.abspath(os.path.dirname(__file__))
+        extdir = os.path.normpath(os.path.join(curdir,'..','extensions'))
+        for module in list(modules for modules in os.listdir(extdir) 
+                           if re.match('[^_][a-zA-Z0-9_]+\\.py', modules)):
+            mod = re.split('\.', module)[0]
+            try:
+                exec('import extensions.'+ mod)
+            except ImportError as e:
+                stdlog.error("Unable to load extension " + mod + ": " + e)
+                next
+            #exec('for extension in list(extensions for extensions in dir(extensions.' + mod ') if re.match(\'ndmp+\', extensions)):')
+            #    print(extension)
+                                
+            classlist.ext_class_id = 0x7ff0 #Class 0x7ff0 V1/2 Echo Interface
+            classlist.ext_version = [1]
+            record.b.class_list.append(classlist)
+        #record.error = const.NDMP_NOT_SUPPORTED_ERR
+        #TODO: use reserved class 21E0.0000  21E3.FFFF
+
     reply_v3 = reply_v4
 
 class set_ext_list():
     '''After a successful reply to the NDMP_CONFIG_GET_EXT_LIST the DMA
-               SHOULD issue a NDMP_CONFIG_SET_EXT_LIST request to select which
-               extensions, and which version of each extension it will use.'''
+       SHOULD issue a NDMP_CONFIG_SET_EXT_LIST request to select which
+       extensions, and which version of each extension it will use.'''
     def request_v4(self, record):
         pass
     

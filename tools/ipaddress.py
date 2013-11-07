@@ -13,8 +13,8 @@ __version__ = '1.0'
 
 import select, socket, socketserver, threading, traceback
 from queue import Queue, Empty
-from server.config import Config; cfg = Config.cfg; c = Config
-from server.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
+from tools.log import Log; stdlog = Log.stdlog
 from xdr import ndmp_const as const
 from tools import utils as ut
 
@@ -2105,7 +2105,7 @@ def get_local_ip():
         def udp_listening_server():
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(('<broadcast>', 8888))
+            s.bind(('0.0.0.0', 8888))
             s.setblocking(0)
             while True:
                 result = select.select([s],[],[])
@@ -2166,8 +2166,8 @@ def get_best_data_conn(peer_addresses):
     for peer in peer_addresses:
         ip_addr = str(ip_address(peer.ip_addr))
         s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-        s.settimeout(int(cfg['DATA_TIMEOUT']))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.settimeout(int(cfg['DATA_TIMEOUT']))
         try:
             with ut.Timer() as t:
                 result = s.connect_ex((ip_addr, peer.port))
@@ -2194,10 +2194,20 @@ def get_data_conn(peer_addresses):
     for peer in peer_addresses:
         ip_addr = str(ip_address(peer.ip_addr))
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(int(cfg['DATA_TIMEOUT']))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.settimeout(int(cfg['DATA_TIMEOUT']))
         try:
             s.connect((ip_addr, peer.port))
         except (TypeError, socket.error, socket.gaierror) as e:
             stdlog.error('Cannot connect to peer ' + ip_addr + ' : ' + repr(e))
-        return s
+    return s
+
+def wait_connect(sock):
+    def listener():
+        (clientsocket, address) = sock.accept()
+        print('wait_connect')
+        print(clientsocket, address)
+        
+    thread = threading.Thread(target=listener)
+    thread.start()
+    return

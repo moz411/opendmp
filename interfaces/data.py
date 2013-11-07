@@ -5,13 +5,14 @@ using the Data Interface. The DMA does not place any constraints
 on the format of the backup data other than it MUST be a stream 
 of data that can be written to the tape device. 
 '''
-import traceback, os, shlex
-from subprocess import Popen, PIPE
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config; threads = Config.threads
+import traceback, os, re, subprocess, shlex, socket
 from server.data import Data
+from server.fh import Fh
 from xdr import ndmp_const as const, ndmp_type as type
-from tools import utils as ut, ipaddress as ip, butypes as bu, betterwalk as bt
+from interfaces import notify as nt
+from tools import utils as ut, ipaddress as ip
 
 class connect():
     '''This request is used by the DMA to instruct the Data Server to
@@ -32,12 +33,12 @@ class connect():
                 #record.data['fd'] = ip.get_best_data_conn(record.b.tcp_addr)
                 record.data['fd'] = ip.get_data_conn(record.b.tcp_addr)
                 record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
+                stdlog.info('DATA> Connected to ' + repr(record.b.tcp_addr))
             except:
                 record.error = const.NDMP_DATA_HALT_CONNECT_ERROR
-                stdlog.error('DATA> Cannot connect to ' + repr(record.data['peer']))
+                stdlog.error('DATA> Cannot connect to ' + repr(record.b.tcp_addr))
                 stdlog.debug(traceback.print_exc())
             record.data['peer'] = record.data['fd'].getsockname()
-            
             
     def reply_v4(self, record):
         pass
@@ -62,9 +63,16 @@ class listen():
         elif(record.b.addr_type == const.NDMP_ADDR_IPC):
             pass
         elif(record.b.addr_type == const.NDMP_ADDR_TCP):
-            record.data['fd'] = ip.get_next_data_conn()
-            record.data['addr_type'] = const.NDMP_ADDR_TCP
-            record.data['state'] = const.NDMP_DATA_STATE_LISTEN
+            try:
+                record.data['fd'] = ip.get_next_data_conn()
+                #ip.wait_connect(record.data['fd'])
+                record.data['addr_type'] = const.NDMP_ADDR_TCP
+                record.data['state'] = const.NDMP_DATA_STATE_LISTEN
+                record.data['peer'] = record.data['fd'].getsockname()
+            except OSError as e:
+                stdlog.error(e)
+                record.error = const.NDMP_ILLEGAL_ARGS_ERR
+        
         
     def reply_v4(self, record):
         if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
@@ -77,11 +85,11 @@ class listen():
         elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
             (host, port) = record.data['fd'].getsockname()
             addr = ip.IPv4Address(host)
-            record.b.data_connection_addr = type.ndmp_addr_v4()
-            record.b.data_connection_addr.addr_type = const.NDMP_ADDR_TCP
-            record.b.data_connection_addr.tcp_addr = []
+            record.b.connect_addr = type.ndmp_addr_v4()
+            record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
+            record.b.connect_addr.tcp_addr = []
             tcp_addr = type.ndmp_tcp_addr_v4(addr._ip_int_from_string(host),port,[])
-            record.b.data_connection_addr.tcp_addr.append(tcp_addr)
+            record.b.connect_addr.tcp_addr.append(tcp_addr)
             
     def reply_v3(self, record):
         if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
@@ -94,11 +102,11 @@ class listen():
         elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
             (host, port) = record.data['fd'].getsockname()
             addr = ip.IPv4Address(host)
-            record.b.data_connection_addr = type.ndmp_addr_v3()
-            record.b.data_connection_addr.addr_type = const.NDMP_ADDR_TCP
-            record.b.data_connection_addr.tcp_addr = type.ndmp_tcp_addr()
-            record.b.data_connection_addr.tcp_addr.ip_addr = addr._ip_int_from_string(host)
-            record.b.data_connection_addr.tcp_addr.port = port
+            record.b.connect_addr = type.ndmp_addr_v3()
+            record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
+            record.b.connect_addr.tcp_addr = type.ndmp_tcp_addr()
+            record.b.connect_addr.tcp_addr.ip_addr = addr._ip_int_from_string(host)
+            record.b.connect_addr.tcp_addr.port = port
             
     request_v3 = request_v4
 
@@ -116,77 +124,52 @@ class start_backup():
             stdlog.error('Illegal state for start_backup: ' + const.ndmp_data_state[record.data['state']])
             record.error = const.NDMP_ILLEGAL_STATE_ERR
             return
-        elif not((c.system in c.Unix and bu_type in bu.Unix) or
-           (c.system in c.Windows and bu_type in bu.Windows)):
+        # TODO: implement a real plugin system
+        elif not((c.system in c.Unix and bu_type in ['tar', 'dump']) or
+           (c.system in c.Windows and bu_type in ['wbadmin', 'ntbackup'])):
             stdlog.error('BUTYPE ' + bu_type + ' not supported')
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         else:
-            exec('record.data[\'type\']  = bu.' + bu_type)
-            #exec('from tools import ' + bu_type)
+            # TODO: implement a real plugin system
+            record.data['bu_type']  = bu_type
+            from bu import tar
+            Bu = tar.Bu()
 
         # Extract all env variables, overwrite default_env
-        for pval in record.data['type'].default_env:
-            name = bytes.decode(pval.name).strip()
-            value = bytes.decode(pval.value).strip()
+        for pval in tar.info.default_env:
+            name = pval.name.decode().strip()
+            value = pval.value.decode().strip()
             record.data['env'][name] =  value
         for pval in record.b.env:
-            name = bytes.decode(pval.name).strip()
-            value = bytes.decode(pval.value).strip()
+            name = pval.name.decode().strip()
+            value = pval.value.decode('utf-8', 'replace').strip()
             record.data['env'][name] =  value
+        
+        # Generate the command line
         try:
-            assert(record.data['env']['FILESYSTEM'] != None)
-        except:
-            try:
-                record.data['env']['FILESYSTEM'] = record.data['env']['FILES']
-            except:
-                record.error = const.NDMP_ILLEGAL_ARGS_ERR
-                return
-        if not(os.path.exists(record.data['env']['FILESYSTEM'])):
-            record.error = const.NDMP_ILLEGAL_ARGS_ERR
-            return
-            
-        '''Retrieve the size of all files in the given path,
-        taking care of symlinks and hardlinks.
-        It also fill the record.data['stats']['files'] list'''
-        stdlog.info('Getting size of %s' % record.data['env']['FILESYSTEM'])
-        seen = {}
-        for dirpath, dirnames, filenames in bt.walk(record.data['env']['FILESYSTEM']):
-            for f in filenames:
-                fp = os.path.join(dirpath, f)
-                try:
-                    stat = os.stat(fp)
-                    record.data['stats']['files'].append([fp, stat])
-                    record.data['stats']['total'] += stat.st_size
-                except OSError:
-                    continue
-                
-                try:
-                    seen[stat.st_ino]
-                except KeyError:
-                    seen[stat.st_ino] = True
-                else:
-                    continue
-        stdlog.info(ut.approximate_size(record.data['stats']['total']))
+            command_line = Bu.backup(record)
+        except (OSError, AttributeError) as e:
+            stdlog.error(e)
+        stdlog.debug(command_line)
+        
+        # Launch the backup process
+        with open(record.fh['history'], 'w', encoding='utf-8') as listing:
+            with open(record.data['bu_fifo'] + '.err', 'w', encoding='utf-8') as error:
+                record.data['process'] = subprocess.Popen(shlex.split(command_line), 
+                                                          cwd=record.data['env']['FILESYSTEM'],
+                                                          stdout=listing, stderr=error, shell=False)
+        
+        # Launch the File History generation thread
+        fh_thread = Fh(record)
+        fh_thread.start()
+        threads.append(fh_thread)
+        
+        # Launch the backup thread
+        data_thread = Data(record)
+        data_thread.start()
+        threads.append(data_thread)
 
-        try:
-            # Launch the bu process, sending data directly to the socket
-            record.data['process'] = Popen([bu_type, record.data['type'].options['backup'], 
-                                            record.data['env']['FILESYSTEM']],
-                                                   stdout=PIPE,
-                                                   stderr=PIPE,
-                                                   shell=False,
-                                                   bufsize=10240)
-            t = Data(record)
-            t.start()
-            #record.data['process'].wait()
-            record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
-            record.data['estart'].set()
-        except (OSError, ValueError):
-            record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
-            stdlog.error('Backup of %s failed' % record.data['env']['FILESYSTEM'])
-            stdlog.debug(traceback.print_exc())
-            stdlog.error(record.data['error'])
 
     def reply_v4(self, record):
         pass
@@ -209,23 +192,41 @@ class start_recover():
             stdlog.error('Illegal state for start_backup: ' + const.ndmp_data_state[record.data['state']])
             record.error = const.NDMP_ILLEGAL_STATE_ERR
             return
-        elif not((c.system in c.Unix and bu_type in bu.Unix) or
-           (c.system in c.Windows and bu_type in bu.Windows)):
+        # TODO: implement a real plugin system
+        elif not((c.system in c.Unix and bu_type in ['tar', 'dump']) or
+           (c.system in c.Windows and bu_type in ['wbadmin', 'ntbackup'])):
             stdlog.error('BUTYPE ' + bu_type + ' not supported')
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         else:
-            exec('record.data[\'type\']  = bu.' + bu_type)
+            # TODO: implement a real plugin system
+            record.data['bu_type']  = bu_type
+            from bu import tar
+            Bu = tar.Bu()
 
         # Extract all env variables, overwrite default_env
-        for pval in record.data['type'].default_env:
-            name = bytes.decode(pval.name).strip()
-            value = bytes.decode(pval.value).strip()
+        for pval in tar.info.default_env:
+            name = pval.name.decode().strip()
+            value = pval.value.decode().strip()
             record.data['env'][name] =  value
         for pval in record.b.env:
-            name = bytes.decode(pval.name).strip()
-            value = bytes.decode(pval.value).strip()
+            name = pval.name.decode().strip()
+            value = pval.value.decode('utf-8', 'replace').strip()
             record.data['env'][name] =  value
+            
+        # Retrieving FILESYSTEM to recover
+        try:
+            if(record.data['env']['FILES']):
+                record.data['env']['FILESYSTEM'] = record.data['env']['FILES']
+        except KeyError:
+            pass
+        try:
+            assert(record.data['env']['FILESYSTEM'] != None)
+        except (KeyError, AssertionError) as e:
+            stdlog.error('variable FILESYSTEM does not exist')
+            record.error = const.NDMP_ILLEGAL_ARGS_ERR
+            return
+            
         try:
             record.data['nlist'] = {
                         'original_path': bytes.decode(record.b.nlist[0].original_path).strip(),
@@ -239,33 +240,36 @@ class start_recover():
             stdlog.error('Invalid informations sent by DMA')
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
-        if not (os.path.exists(record.data['nlist']['destination_dir'])):
-            stdlog.info('Path ' + record.data['nlist']['destination_dir'] +
-                        ' does not exists, creating')
+        
+        # Creating the destination dir
+        if not(os.path.exists(record.data['nlist']['destination_dir'])):
+            stdlog.info('Path ' + record.data['nlist']['destination_dir'] + ' does not exist, creating')
             try:
                 os.makedirs(record.data['nlist']['destination_dir'])
             except OSError as e:
-                stdlog.error(e.strerror)
+                stdlog.error(e)
                 record.error = const.NDMP_UNDEFINED_ERR
+                return
         
+        # Generate the command line
         try:
-            # Launch the bu process, sending data directly to the socket
-            command = ' '.join([bu_type, record.data['type'].options['recover'],
-                               record.data['nlist']['destination_dir']])
-            record.data['process'] = Popen(shlex.split(command),
-                                                   stdin=PIPE,
-                                                   stderr=PIPE,
-                                                   shell=False,
-                                                   bufsize=10240)
-            t = Data(record)
-            t.start()
-            #record.data['process'].wait()
-            record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
-        except (OSError, ValueError):
-            record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
-            stdlog.error('Recover of %s failed' % record.data['nlist']['original_path'])
-            stdlog.debug(traceback.print_exc())
-            stdlog.error(record.data['error'])
+            command_line = Bu.recover(record)
+        except (OSError, AttributeError, KeyError) as e:
+            stdlog.error(e)
+            return
+        stdlog.debug(command_line)
+        
+        # Launch the recover monitoring thread
+        t = Data(record)
+        t.start()
+        
+        # Launch the recover process
+        with open(record.data['bu_fifo'] + '.err', 'w', encoding='utf-8') as error:
+            record.data['process'] = subprocess.Popen(shlex.split(command_line),
+                                                   stdin=subprocess.PIPE,
+                                                   stderr=error,
+                                                   cwd=record.data['nlist']['destination_dir'],
+                                                   shell=False)
     
     def reply_v4(self, record):
         pass
@@ -299,26 +303,28 @@ class get_state():
     def reply_v4(self, record):
         with record.data['lock']:
             sent = record.data['stats']['current']
-            try:
-                record.data['error'] = record.data['process'].stderr
-            except AttributeError:
-                record.data['error'] = const.NDMP_NO_ERR
             record.b.state = record.data['state']
             remain = record.data['stats']['total'] - sent
-            record.b.unsupported = const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID
+            record.b.unsupported = (const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID |
+                                    const.NDMP_DATA_STATE_EST_BYTES_REMAIN_INVALID)
             record.b.operation = record.data['operation']
             record.b.halt_reason = record.data['halt_reason']
             record.b.bytes_processed = ut.long_long_to_quad(sent)
-            record.b.est_bytes_remain = ut.long_long_to_quad(remain)
+            # record.b.est_bytes_remain = ut.long_long_to_quad(remain)
+            record.b.est_bytes_remain = ut.long_long_to_quad(0)
             record.b.est_time_remain = 0
             record.b.invalid = 0
         if(record.data['addr_type'] == const.NDMP_ADDR_TCP):
-            intaddr = ip.ip_address(record.data['peer'][0])
-            addr = intaddr._ip_int_from_string(record.data['peer'][0])
-            record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_TCP,
-                                                         [type.ndmp_tcp_addr_v4(addr,
-                                                                           record.data['peer'][1],
-                                                             [type.ndmp_pval(name=b'', value=b'')])])
+            if(record.data['state'] == const.NDMP_DATA_STATE_CONNECTED):
+                intaddr = ip.ip_address(record.data['peer'][0])
+                addr = intaddr._ip_int_from_string(record.data['peer'][0])
+                record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_TCP,
+                                                             [type.ndmp_tcp_addr_v4(addr,
+                                                                               record.data['peer'][1],
+                                                                 [type.ndmp_pval(name=b'', value=b'')])])
+            else:
+                record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
+                # record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
         elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
             record.b.data_connection_addr = type.ndmp_ipc_addr(b'')
         elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
@@ -327,7 +333,7 @@ class get_state():
         record.b.read_length = ut.long_long_to_quad(0)
             
         stdlog.info('DATA> Bytes processed: ' + repr(sent))
-        stdlog.info('DATA> Bytes remaining: ' + repr(remain))
+        #stdlog.info('DATA> Bytes remaining: ' + repr(remain))
 
     reply_v3 = reply_v4
 
@@ -353,20 +359,18 @@ class stop():
        the IDLE state.'''
     
     def reply_v4(self, record):
-        record.data['equit'].set()
+        record.fh['equit'].set() # Will close the fh thread
+        record.data['equit'].set() # Will close the data thread
+        
         with record.data['lock']:
             state = record.data['state']
         if(state != const.NDMP_DATA_STATE_HALTED):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         else:
             with record.data['lock']:
+                record.data['halt_reason'] = const.NDMP_DATA_HALT_NA
                 record.data['state'] = const.NDMP_DATA_STATE_IDLE
-            record.data['type'] = None
-            record.data['env'] = {}
             record.data['operation'] = const.NDMP_DATA_OP_NOACTION
-            record.data['filesystem'] = None
-            record.data['stats'] =  {'total': 0,'current': 0,'files': []}
-
     reply_v3 = reply_v4
 
 class abort():
@@ -386,13 +390,13 @@ class abort():
                     record.data['process'].terminate()
             except OSError as e:
                 stdlog.error('Cannot stop process ' + repr(record.data['process'].pid) + ':' + e.strerror)
-            record.mover['equit'].set() # Will close the data thread
+            except AttributeError:
+                stdlog.error('Process already stopped')
+            record.fh['equit'].set() # Will close the fh thread
+            record.data['equit'].set() # Will close the data thread
+            
             record.data['halt_reason'] = const.NDMP_DATA_HALT_ABORTED
             record.data['state'] = const.NDMP_DATA_STATE_HALTED
-            record.data['type'] = None
-            record.data['env'] = {}
             record.data['operation'] = const.NDMP_DATA_OP_NOACTION
-            record.data['filesystem'] = None
-            record.data['stats'] =  {'total': 0,'current': 0,'files': []}
-                
+            
     reply_v3 = reply_v4

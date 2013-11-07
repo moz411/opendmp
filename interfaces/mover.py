@@ -7,13 +7,12 @@ Interface reads data from the tape device and writes the data to
 the data connection. The MOVER handles tape exceptions and 
 notifies the DMA. 
 '''
-
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
 import traceback, queue
 from io import BufferedReader
 from tools import utils as ut, ipaddress as ip
 from server.mover import Mover
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 from xdr.ndmp_type import (ndmp_tcp_addr_v4, ndmp_ipc_addr, 
                            ndmp_addr_v4, ndmp_tcp_addr, ndmp_addr_v3)
@@ -27,9 +26,10 @@ class set_record_size():
         if(record.mover['state'] not in [const.NDMP_MOVER_STATE_IDLE]):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         else:
-            record.mover['record_size'] = record.b.len
-            record.mover['window_length'] = 0
-            record.mover['window_offset'] = 0
+            with record.mover['lock']:
+                record.mover['record_size'] = record.b.len
+                record.mover['window_length'] = 0
+                record.mover['window_offset'] = 0
 
     def reply_v4(self, record):
         pass
@@ -50,8 +50,9 @@ class set_window():
         elif(record.mover['record_size'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
         else:
-            record.mover['window_offset'] = ut.quad_to_long_long(record.b.offset)
-            record.mover['window_len'] = ut.quad_to_long_long(record.b.length)
+            with record.mover['lock']:
+                record.mover['window_offset'] = ut.quad_to_long_long(record.b.offset)
+                record.mover['window_len'] = ut.quad_to_long_long(record.b.length)
 
     def reply_v4(self, record):
         pass
@@ -230,7 +231,7 @@ class close():
             record.mover['equit'].set() # Will close the mover thread
             with record.mover['lock']:
                 record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
-
+            record.mover['equit'].clear() # will suspend next mover execution
     reply_v3 = reply_v4
 
 class stop():
@@ -257,7 +258,7 @@ class stop():
                 record.mover['bytes_left_to_read'] = 0
                 record.mover['window_length'] = 0 
                 record.mover['window_offset'] = 0
-                
+        record.mover['equit'].clear() # will suspend next mover execution
     reply_v3 = reply_v4
     
 class abort():
@@ -284,5 +285,5 @@ class abort():
             record.mover['bytes_left_to_read'] = 0
             record.mover['window_length'] = 0 
             record.mover['window_offset'] = 0
-
+        record.mover['equit'].clear() # will suspend next mover execution
     reply_v3 = reply_v4

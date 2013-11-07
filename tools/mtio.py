@@ -2,8 +2,8 @@
 From linux/mtio.h header file for Linux. Written by H. Bergman
 Structures and definitions for mag tape io control commands
 '''
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
 import xdr.ndmp_const as const
 from tools import utils as ut
 from ctypes import *

@@ -1,8 +1,9 @@
 '''various functions, mainly used to pack NDMP replies'''
 
-import os, sys, re, traceback, time, ctypes
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
+import os, sys, struct, re, traceback, time, ctypes, binascii, random, stat, csv, pickle
+import multiprocessing
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
 import xdr.ndmp_const as const
 from xdr.ndmp_type import (ndmp_fs_info_v4, ndmp_u_quad,
                            ndmp_pval, ndmp_device_info_v4,
@@ -73,13 +74,23 @@ def add_hctl_linux(record):
     return (controller, target, lun)
 
 def add_filesystem_unix(line, local):
-    from tools import butypes as bu
+    from bu import tar as bu
     fs = ndmp_fs_info_v4()
-    (fs_physical_device, t, fs_logical_device, t, fs_type, options) = line.split()
-    (f_bsize, f_frsize, f_blocks, f_bfree, 
-     f_bavail, f_files, f_ffree, f_favail, 
-     f_flag, f_namemax) = os.statvfs(fs_logical_device)
-    avail = repr(','.join(bu.Unix)).encode()
+    result = line.split()
+    fs_physical_device = result[0]
+    fs_logical_device = result[2]
+    fs_type = re.sub('\(|,', '', result[3])
+    try:
+        (f_bsize, f_frsize, f_blocks, f_bfree, 
+         f_bavail, f_files, f_ffree, f_favail, 
+         f_flag, f_namemax) = os.statvfs(fs_logical_device)
+    except OSError as e:
+        stdlog.error(e)
+        raise
+    if (cfg['EMULATE_NETAPP'] == 'True'):
+        avail = b'dump'
+    else:
+        avail = bu.info.butype_name
     fs.invalid = 0
     fs.fs_type = fs_type.encode()
     fs.fs_logical_device = fs_logical_device.encode()
@@ -130,20 +141,17 @@ class all_ulonglong(ctypes.BigEndianStructure):
                 ('high', ctypes.c_ulonglong), 
                 ('low', ctypes.c_ulonglong)
                 ]
-    
-    def __repr__(self):
-        out = []
-        if self.high is not None:
-            out += ['high=%s' % repr(self.high)]
-        if self.low is not None:
-            out += ['low=%s' % repr(self.low)]
-        return 'ndmp_u_quad(%s)' % ', '.join(out)
 
 def long_long_to_quad(d):
-        h = all_ulonglong()
-        h.high = max(0, d >> 32)
-        h.low = max(0, d)
-        return (h);
+    u_quad = ndmp_u_quad()
+    if(d > 4294967295):
+        u_quad.high = d - 4294967295
+        u_quad.low = 4294967295
+    else:
+        u_quad.high = 0
+        u_quad.low = d
+    return u_quad
+        
 
 def quad_to_long_long(q):
         return ((q.high >> 32) + q.low)
@@ -161,3 +169,76 @@ def approximate_size(size, a_kilobyte_is_1024_bytes=True):
         if size < multiple:
             return '{0:.1f} {1}'.format(size, suffix)
     raise ValueError('number too large')
+
+def give_fifo():
+    if not (os.path.exists(cfg['RUNDIR'])):
+        os.mkdir(cfg['RUNDIR'], mode=0o700)
+    file = bytes(binascii.b2a_hex(os.urandom(5))).decode()
+    filename = os.path.join(cfg['RUNDIR'], file)
+    os.mkfifo(filename, mode=0o600)
+    return (filename)
+
+def give_socket(fd):
+    sockname =  os.path.join('/proc', repr(os.getpid()), repr(fd.fileno()))
+    print(sockname)
+    return sockname
+
+def clean_file(filename):
+    # TODO: fix that bug
+    #try:
+    #    dir = os.path.split(filename)[0]
+    #except AttributeError:
+    #    pass
+    #if not (dir == cfg['RUNDIR']): return
+    try:
+        os.remove(filename)
+    except OSError as e:
+        stdlog.error(e)
+
+        
+def check_file_mode(st_mode):
+    if (st_mode == 10):
+        type =  const.NDMP_FILE_REG
+    elif (st_mode == 4):
+        type =  const.NDMP_FILE_DIR
+    elif(st_mode == 12):
+        type =  const.NDMP_FILE_SLINK
+    elif(st_mode == 1):
+        type =  const.NDMP_FILE_FIFO
+    elif(st_mode == 6):
+        type =  const.NDMP_FILE_BSPEC
+    elif(st_mode == 2):
+        type =  const.NDMP_FILE_CSPEC
+    elif(st_mode == 14):
+        type =  const.NDMP_FILE_SOCK
+    else:
+        type =  const.NDMP_FILE_OTHER
+    return (type)
+
+def read_dumpdates(file):
+    with open(file, 'rb') as dumpdates:
+        return pickle.load(dumpdates)
+
+def write_dumpdates(file, dumpdates):
+    with open(file, 'wb+') as dumpfile:
+        pickle.dump(dumpdates, dumpfile, pickle.HIGHEST_PROTOCOL)
+ 
+def mktstampfile(file, tstamp):
+    with open(file, 'w') as node:
+        pass
+    os.utime(file,times=(tstamp,tstamp))
+    return (file)
+
+def compute_incremental(dumpdates, filesystem, level):
+    tstamp = None
+    while(tstamp == None and level > 0):
+        try:
+            tstamp = [dumpdates[key] for key in dumpdates.keys() 
+                      if key[0] == filesystem and 
+                         key[1] == level][0]
+        except IndexError:
+            level-=1
+            continue
+    return tstamp
+    
+    

@@ -5,11 +5,12 @@ defined using a UNIX file system or an NT file system compatible
 format. The backup method can generate UNIX, NT, or both UNIX and NT
 file system compatible format file history for each file.'''
 
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
+import time, os, re, traceback
 from xdr import ndmp_const as const, ndmp_type as type
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
 import tools.utils as ut
-import time, stat
+from tools.bitstring import BitArray, BitStream
 from xdr.ndmp_pack import NDMPPacker
 
 class add_file():
@@ -32,42 +33,53 @@ class add_file():
         # Body
         body = type.ndmp_fh_add_file_request_v3()
         body.files = []
-        for file in record.data['stats']['files']:
-            stats = file[1]
-            if (stat.S_ISREG(stats.st_mode)):
-                ftype = const.NDMP_FILE_REG
-            elif(stat.S_ISLNK(stats.st_mode)):
-                ftype = const.NDMP_FILE_SLINK
-            elif(stat.S_ISFIFO(stats.st_mode)):
-                ftype = const.NDMP_FILE_FIFO
-            elif(stat.S_ISBLK(stats.st_mode)):
-                ftype = const.NDMP_FILE_BSPEC
-            elif(stat.S_ISCHR(stats.st_mode)):
-                ftype = const.NDMP_FILE_CSPEC
-            elif(stat.S_ISSOCK(stats.st_mode)):
-                ftype = const.NDMP_FILE_SOCK
+        mode = re.compile('(\d{,3})(\d{4})')
+        #st_dev st_ino st_mode st_nlink st_uid st_gid st_rdev st_size st_atime st_mtime st_ctime 
+        # st_birthtime st_blksize st_blocks st_gen name 
+        with record.fh['lock']:
+            lines = record.fh['files']
+            record.fh['files'] = []
+        
+        for line in lines:
+            try:
+                (st_dev, st_ino, st_mode, st_nlink, st_uid, st_gid, st_rdev, 
+                 st_size, st_atime, st_mtime, st_ctime, st_birthtime, 
+                 st_blksize, st_blocks, st_gen, name) = line.split(None, 15) 
+                if(c.system == 'Linux'):
+                    st_mode = oct(int(bytes(st_mode).decode(),base=16)).split('o')[1]
+                res = mode.match(st_mode)
+                ftype = ut.check_file_mode(int(res.group(1)))
+                fattr = res.group(2)
+            except:
+                traceback.print_exc()
             
             if(c.system in c.Unix):
-                file_name = type.ndmp_file_name_v3(const.NDMP_FS_UNIX, repr(file[0]).encode())
-                file_stat = type.ndmp_file_stat_v3(invalid=0,
-                                               fs_type=const.NDMP_FS_UNIX,
-                                               ftype=ftype,
-                                               mtime=int(stats.st_mtime),
-                                               atime=int(stats.st_atime),
-                                               ctime=int(stats.st_ctime),
-                                               owner=int(stats.st_uid),
-                                               group=int(stats.st_gid),
-                                               fattr=int(stats.st_mode),
-                                               size=ut.long_long_to_quad(stats.st_size),
-                                               links=0)
-            
-                node = ut.long_long_to_quad(stats.st_ino)
-                fh_info = ut.long_long_to_quad(1>>64)
-                body.files.append(type.ndmp_file([file_name], [file_stat], node, fh_info))
-        
+                try:
+                    file_stat = type.ndmp_file_stat_v3(invalid=0,
+                                                   fs_type=const.NDMP_FS_UNIX,
+                                                   ftype=ftype,
+                                                   atime=int(st_atime),
+                                                   mtime=int(st_mtime),
+                                                   ctime=int(st_ctime),
+                                                   fattr=int(fattr),
+                                                   owner=int(st_uid),
+                                                   group=int(st_gid),
+                                                   size=ut.long_long_to_quad(int(st_size)),
+                                                   links=int(st_nlink))
+                    node = ut.long_long_to_quad(int(st_ino))
+                    if(name != b'.'):
+                        if (name.startswith(b'./')):
+                            name = re.sub(b'^./',b'',name)
+                        name = b''.join([record.data['env']['PATHNAME_SEPARATOR'].encode('utf-8'),
+                                         name])
+                        file_name = type.ndmp_file_name_v3(const.NDMP_FS_UNIX, name)
+                        fh_info = ut.long_long_to_quad(1>>64)
+                        body.files.append(type.ndmp_file([file_name], [file_stat], node, fh_info))
+                except:
+                    traceback.print_exc()
         p.pack_ndmp_fh_add_file_request_v4(body)
         stdlog.debug(body)
-        return p.get_buffer()
+        record.queue.put(p.get_buffer())
 
 
 class add_dir():

@@ -1,78 +1,88 @@
-import sys, struct, time, random, hashlib, traceback, threading
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
+import multiprocessing, sys, struct, time, random, hashlib, traceback, threading
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const, ndmp_type as type
 from tools import utils as ut
 from xdrlib import Error as XDRError
 from xdr.ndmp_pack import NDMPPacker, NDMPUnpacker
+from interfaces import notify
 
 class Record():
     '''This class will traverse the whole NDMP session, and keep
     all the needed informations (states, sockets, sequences, etc)
     that is shared in the program'''
     
-    challenge = random.randint(0, 2**64).to_bytes(64, 'big')
-    h = type.ndmp_header()
-    b = None
-    queue = None
-    error = const.NDMP_NO_ERR
-    server_sequence = 2
-    dma_sequence = 0
-    protocol_version = cfg['PREFERRED_NDMP_VERSION']
-    connected = False
-    device = None
-    p = NDMPPacker()
-    u = NDMPUnpacker(b'None')
+    def __init__(self):
+        self.challenge = random.randint(0, 2**64).to_bytes(64, 'big')
+        self.h = type.ndmp_header()
+        self.b = None
+        self.error = const.NDMP_NO_ERR
+        self.server_sequence = 2
+        self.dma_sequence = 0
+        self.protocol_version = cfg['PREFERRED_NDMP_VERSION']
+        self.connected = False
+        self.device = None
+        self.p = NDMPPacker()
+        self.u = NDMPUnpacker(b'None')
+        
+        self.log = {'type': const.NDMP_LOG_NORMAL,
+               'id': 0,
+               'entry': None
+               }
     
-    log = {'type': const.NDMP_LOG_NORMAL,
-           'id': 0,
-           'entry': None
-           }
-
-    data = {'type': None, 
-            'env': {}, 
-            'state': const.NDMP_DATA_STATE_IDLE,
-            'operation': const.NDMP_DATA_OP_NOACTION,
-            'addr_type': const.NDMP_ADDR_LOCAL,
-            'halt_reason': const.NDMP_DATA_HALT_NA,
-            'fd': None,
-            'peer': None,
-            'log': None,
-            'error': None,
-            'process': None,
-            'lock': threading.RLock(),
-            'estart': threading.Event(),
-            'equit': threading.Event(),
-            'errlvl': 0,
-            'filesystem': None,
-            'offset': 0,
-            'length': 0,
-            'file': None,
-            'recovery': {'status': const.NDMP_RECOVERY_SUCCESSFUL},
-            'stats':  {'total': 0,
-                       'current': 0,
-                       'files': []}}
-    
-    mover = {'mode': const.NDMP_MOVER_MODE_NOACTION,
-             'state': const.NDMP_MOVER_STATE_IDLE,
-             'addr_type': None,
-             'host': None,
-             'port': None,
-             'peer': None,
-             'halt_reason': const.NDMP_MOVER_HALT_NA,
-             'pause_reason': const.NDMP_MOVER_PAUSE_NA,
-             'lock': threading.RLock(),
-             'estart': threading.Event(),
-             'equit': threading.Event(),
-             'econt': threading.Event(),
-             'record_size': 0,
-             'record_num': 0,
-             'bytes_moved': 0,
-             'seek_position': 0,
-             'bytes_left_to_read': 0,
-             'window_length': 0, 
-             'window_offset': 0}
-
+        self.data = {'type': None, 
+                'env': {}, 
+                'state': const.NDMP_DATA_STATE_IDLE,
+                'operation': const.NDMP_DATA_OP_NOACTION,
+                'addr_type': const.NDMP_ADDR_LOCAL,
+                'halt_reason': const.NDMP_DATA_HALT_NA,
+                'fd': None,
+                'bu_fifo': None,
+                'stack_size': 10240,
+                'peer': None,
+                'log': None,
+                'error': [],
+                'process': None,
+                'lock': threading.RLock(),
+                'estart': threading.Event(),
+                'equit': threading.Event(),
+                'retcode': 255,
+                'filesystem': None,
+                'offset': 0,
+                'length': 0,
+                'file': None,
+                'recovery': {'status': None},
+                'dumpdates': {},
+                'stampfile': None,
+                'stats':  {'total': 0,
+                           'current': 0}}
+        
+        self.mover = {'mode': const.NDMP_MOVER_MODE_NOACTION,
+                 'state': const.NDMP_MOVER_STATE_IDLE,
+                 'addr_type': None,
+                 'host': None,
+                 'port': None,
+                 'peer': None,
+                 'halt_reason': const.NDMP_MOVER_HALT_NA,
+                 'pause_reason': const.NDMP_MOVER_PAUSE_NA,
+                 'lock': threading.RLock(),
+                 'estart': threading.Event(),
+                 'equit': threading.Event(),
+                 'econt': threading.Event(),
+                 'record_size': 0,
+                 'record_num': 0,
+                 'bytes_moved': 0,
+                 'seek_position': 0,
+                 'bytes_left_to_read': 0,
+                 'window_length': 0, 
+                 'window_offset': 0}
+        
+        self.fh = {'files': [],
+                  'history': None,
+                  'max_lines': 1000,
+                  'lock': threading.RLock(),
+                  'barrier': threading.Barrier(2),
+                  'equit': threading.Event()}
         
     def __repr__(self):
         out = []
@@ -107,8 +117,26 @@ class Record():
             out += ['%s' % const.ndmp_message[self.h.message]]
         return '%s' % ', '.join(out)
     __str__ = __repr__   
-
-    def SEND(self):
+    
+    def run_task(self, message):
+        
+        # First part: decode and execute the request
+        # Unpack header
+        self.u.reset(message)
+        self.h = self.u.unpack_ndmp_header()
+        self.error = self.h.error
+        
+        if self.h.message in [const.NDMP_CONNECT_CLOSE, const.NDMP_SHUTDOWN]:
+                    return
+                
+        # debug
+        stdlog.debug(repr(self))
+        
+        # Unpack body
+        if(self.verify_sequence()):
+            self.body()
+            
+        # Second part: prepare and send the response    
         self.reset()
         self.h.message_type = const.NDMP_MESSAGE_REPLY
         self.h.reply_sequence = self.dma_sequence
@@ -128,24 +156,10 @@ class Record():
         stdlog.debug(repr(self))
         stdlog.debug('\t' + repr(self.b))
         stdlog.debug('')
-            
-        # Add the message in the send queue
+        
+        # return the encoded answer
         return self.p.get_buffer()
         
-
-    def RECV(self):
-        # Unpack header
-        self.u.reset(self.message)
-        self.h = self.u.unpack_ndmp_header()
-        self.error = self.h.error
-        
-        # debug
-        stdlog.debug(repr(self))
-        
-        # Unpack body
-        if(self.verify_sequence()):
-            self.body()
-
         
     def body(self):
         """
@@ -233,14 +247,16 @@ class Record():
         elif(self.h.message == const.NDMP_CONNECT_CLIENT_AUTH):
             try:
                 assert(self.auth.auth_type == const.NDMP_AUTH_MD5)
-                return self.auth_md5()
+                assert(self.auth.auth_data.auth_md5.auth_digest == self.auth_md5())
+                self.connected = True
+                return True
             except (AttributeError, AssertionError):
                 self.error = const.NDMP_NOT_AUTHORIZED_ERR
                 return False
         else:
             self.error = const.NDMP_NOT_AUTHORIZED_ERR
             return False
-    
+
     def verify_sequence(self):
         if(self.h.message_type == const.NDMP_MESSAGE_REPLY
            and self.h.reply_sequence != self.server_sequence):
@@ -257,7 +273,7 @@ class Record():
         password = cfg['PASSWORD'].encode()
         if(self.auth.auth_data.auth_md5.auth_id != cfg['USER'].encode()):
             self.error =  const.NDMP_NOT_AUTHORIZED_ERR
-        # TODO: Still something to fix for passwd > 32 bytes
+        #TODO: Still something to fix for passwd > 32 bytes
         m = hashlib.md5()
         if(len(password) == 0):
             self.error =  const.NDMP_NOT_AUTHORIZED_ERR
@@ -267,12 +283,7 @@ class Record():
         else: 
             padding = b'\x00'*(64-2*len(password))
         m.update(password + padding + self.challenge + password)
-        digest = m.digest()
-        if (self.auth.auth_data.auth_md5.auth_digest != digest):
-            self.error =  const.NDMP_NOT_AUTHORIZED_ERR
-        else:
-            self.connected = True
-            return True
+        return(m.digest())
 
     def reset(self):
         self.b = ut.Empty()

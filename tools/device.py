@@ -1,6 +1,6 @@
 import os, errno, threading
-from server.log import Log; stdlog = Log.stdlog
-from server.config import Config; cfg = Config.cfg; c = Config
+from tools.log import Log; stdlog = Log.stdlog
+from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 
 class Device():
@@ -24,13 +24,14 @@ class Device():
 
     def __init__(self, path=None):
         self.path = path
+        self.data = None
         
     def open(self, record):
         if(record.h.message == const.NDMP_TAPE_OPEN):
             self.mode = record.b.mode
             if(record.b.mode == const.NDMP_TAPE_READ_MODE):
                 mode = os.O_RDONLY
-            if(record.b.mode == const.NDMP_TAPE_WRITE_MODE):
+            elif(record.b.mode == const.NDMP_TAPE_WRITE_MODE):
                 mode = os.O_RDWR | os.O_NDELAY
             elif(record.b.mode in [const.NDMP_TAPE_RAW_MODE,
                                    const.NDMP_TAPE_RAW2_MODE]):
@@ -50,13 +51,13 @@ class Device():
             record.error = const.NDMP_IO_ERR
             if(e.errno == errno.EACCES):
                 record.error = const.NDMP_WRITE_PROTECT_ERR
-            if(e.errno == errno.ENOENT):
+            elif(e.errno == errno.ENOENT):
                 record.error = const.NDMP_NO_DEVICE_ERR
-            if(e.errno == errno.EBUSY):
+            elif(e.errno == errno.EBUSY):
                 record.error = const.NDMP_DEVICE_BUSY_ERR
-            if(e.errno == errno.ENODEV):
+            elif(e.errno == errno.ENODEV):
                 record.error = const.NDMP_NO_DEVICE_ERR
-            if(e.errno == 46): # ENOTREADY
+            elif(e.errno == 46): # ENOTREADY
                 record.error = const.NDMP_NO_TAPE_LOADED_ERR
         except:
             stdlog.error(self.path + ': open failed')
@@ -72,14 +73,15 @@ class Device():
             record.error = const.NDMP_IO_ERR
             if(e.errno == errno.EACCES):
                 record.error = const.NDMP_WRITE_PROTECT_ERR
-            if(e.errno == errno.ENOENT):
+            elif(e.errno == errno.ENOENT):
                 record.error = const.NDMP_NO_DEVICE_ERR
-            if(e.errno == errno.EBUSY):
+            elif(e.errno == errno.EBUSY):
                 record.error = const.NDMP_DEVICE_BUSY_ERR
-            if(e.errno == errno.ENODEV):
+            elif(e.errno == errno.ENODEV):
                 record.error = const.NDMP_NO_DEVICE_ERR
-            if(e.errno == 123): # No medium
+            elif(e.errno == 123): # No medium
                 record.error = const.NDMP_NO_TAPE_LOADED_ERR
+                
         except:
             stdlog.error(self.path + ': close failed')
             record.error = const.NDMP_IO_ERR
@@ -92,30 +94,28 @@ class Device():
             record.error = const.NDMP_IO_ERR
             if(e.errno == errno.EACCES):
                 record.error = const.NDMP_WRITE_PROTECT_ERR
-            if(e.errno == errno.ENOENT):
+            elif(e.errno == errno.ENOENT):
                 record.error = const.NDMP_NO_DEVICE_ERR
-            if(e.errno == errno.EBUSY):
+            elif(e.errno == errno.EBUSY):
                 record.error = const.NDMP_DEVICE_BUSY_ERR
-            if(e.errno == errno.ENODEV):
+            elif(e.errno == errno.ENODEV):
                 record.error = const.NDMP_NO_DEVICE_ERR
-        except:
-            stdlog.error(self.path + ': read failed')
-            record.error = const.NDMP_IO_ERR
             
     def write(self, record):
+        count = 0
         try:
-            self.count = os.write(self.fd, self.data)
-        except (OSError, IOError) as e :
+            count = os.write(self.fd, self.data)
+        except (OSError, IOError) as e:
             stdlog.error(self.path + ': ' + e.strerror)
             record.error = const.NDMP_IO_ERR
             if(e.errno == errno.EACCES):
                 record.error = const.NDMP_WRITE_PROTECT_ERR
-            if(e.errno == errno.ENOENT):
+            elif(e.errno == errno.ENOENT):
                 record.error = const.NDMP_NO_DEVICE_ERR
-            if(e.errno == errno.EBUSY):
+            elif(e.errno == errno.EBUSY):
                 record.error = const.NDMP_DEVICE_BUSY_ERR
-            if(e.errno == errno.ENODEV):
+            elif(e.errno == errno.ENODEV):
                 record.error = const.NDMP_NO_DEVICE_ERR
-        except:
-            stdlog.error(self.path + ': write failed')
-            record.error = const.NDMP_IO_ERR
+            elif(e.errno == errno.ENOSPC):
+                record.error = const.NDMP_EOM_ERR
+        return count*8*1024 # in bits
