@@ -4,7 +4,7 @@ and fork a subprocess'''
 
 from tools.config import Config; cfg = Config.cfg; c = Config; threads = Config.threads
 from tools.log import Log; stdlog = Log.stdlog
-import threading, queue, socket, traceback, struct, sys, select, os, time, multiprocessing
+import threading, queue, socket, traceback, struct, sys, select, os, time
 from xdr.record import Record
 import xdr.ndmp_const as const
 from interfaces import notify
@@ -86,7 +86,6 @@ class NDMPServer(object):
             time.sleep(0.1)
             for thread in threads:
                 thread.join(1)
-            multiprocessing.active_children()
         
     def handle(rqueue, wqueue):
         stdlog.info('Started process ' + repr(os.getpid()))

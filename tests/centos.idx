@@ -1,11 +1,3 @@
-CM 01 +0/43850K
-DE 'FILES'='/boot'
-DE 'FILESYSTEM'='/boot'
-DE 'HIST'='y'
-DE 'LEVEL'=0
-DE 'PATHNAME_SEPARATOR'='/'
-DE 'TYPE'='tar'
-DE 'USER'='ndmp'
 DHf /config-2.6.32-220.13.1.el6.x86_64 UNIX f- m1204 u0 g0 s100948 tm1334704662 @0
 DHf /config-2.6.32-220.el6.x86_64 UNIX f- m1204 u0 g0 s100943 tm1323203756 @0
 DHf /efi/EFI/redhat/grub.efi UNIX f- m1363 u0 g0 s248594 tm1323296759 @0

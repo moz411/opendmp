@@ -43,7 +43,7 @@ class Fh(threading.Thread):
         except OSError as e:
             stdlog.error(e)
         finally:
-            stdlog.info('File History operation finished')
             self.record.fh['barrier'].wait() # Will wake up data thread
+            stdlog.info('File History operation finished')
             sys.exit()
         

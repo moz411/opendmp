@@ -1,1 +1,1 @@
-./ndmjob -d4 -x -v -D localhost/4m,ndmp,ndmp -F / -E FILESYSTEM=/boot -C /restore -T ddve1/4m,ndmp,ndmp -f /dev/dd_st_c0t1l0  
+./ndmjob -d9 -x -v -D localhost/4m,ndmp,ndmp -F / -E FILESYSTEM=/boot -C /restore -T ddve1/4m,ndmp,ndmp -f /dev/dd_st_c0t1l0 -J centos.idx -m A000+2/43850K

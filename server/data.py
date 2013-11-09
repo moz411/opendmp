@@ -19,18 +19,19 @@ class Data(threading.Thread):
             if self.record.data['operation'] == const.NDMP_DATA_OP_BACKUP:
                 stdlog.info('Starting backup of ' + self.record.data['env']['FILESYSTEM'])
                 self.backup()
-            elif self.record.data['operation'] == const.NDMP_DATA_OP_RECOVER:
-                stdlog.info('Starting recover of ' + self.record.data['env']['FILESYSTEM'])
-                self.recover()
-        except (OSError, ValueError, UnboundLocalError, BrokenPipeError) as e:
-            stdlog.error('operation failed: ' + repr(e))
-            self.errmsg = e
-        finally:
-            self.terminate()
-            if self.record.data['operation'] == const.NDMP_DATA_OP_BACKUP:
+                self.terminate()
                 self.record.fh['barrier'].wait() # wait for File History to send all logs
                 if self.record.data['retcode'] == 0:
                     self.update_dumpdate()
+            elif self.record.data['operation'] == const.NDMP_DATA_OP_RECOVER:
+                stdlog.info('Starting recover of ' + self.record.data['env']['FILESYSTEM'])
+                self.recover()
+                self.terminate()
+        except (OSError, ValueError, UnboundLocalError, BrokenPipeError) as e:
+            self.errmsg = e.strerror
+            stdlog.error('operation failed: ' + self.errmsg)
+            self.terminate()
+        finally:
             nt.data_halted().post(self.record)
             stdlog.info('Data operation finished status ' + repr(self.record.data['retcode']))
             sys.exit()
@@ -44,13 +45,19 @@ class Data(threading.Thread):
                 if not data: return
 
     def recover(self):
+        data = b''
         with open(self.record.data['bu_fifo'],'wb') as file:
             nt.data_read().post(self.record)
             while not self.record.data['equit'].is_set():
-                data = self.record.data['fd'].recv(4096)
-                with self.record.data['lock']:
-                    self.record.data['stats']['current'] += file.write(data)
-                if not data: return
+                data += self.record.data['fd'].recv(4096)
+                print('data')
+                print(len(data))
+                if len(data) >= 81920:
+                    with self.record.data['lock']:
+                        self.record.data['stats']['current'] += file.write(data)
+                if not data: 
+                    print('no data')
+                    return
             
     def terminate(self):
         try:
@@ -61,9 +68,9 @@ class Data(threading.Thread):
                 self.record.data['error'].append(self.errmsg)
             else:    
                 self.record.data['retcode'] = self.record.data['process'].returncode
-                with open(self.record.data['bu_fifo'] + '.err', 'rb') as logfile:
-                    for line in logfile:
-                      self.record.data['error'].append(line.strip())
+            with open(self.record.data['bu_fifo'] + '.err', 'rb') as logfile:
+                for line in logfile:
+                  self.record.data['error'].append(line.strip())
             self.record.data['fd'].close()
             # cleanup temporary files
             for tmpfile in [self.record.data['bu_fifo'] + '.err', 

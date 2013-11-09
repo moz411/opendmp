@@ -49,7 +49,7 @@ class Record():
                 'retcode': 255,
                 'filesystem': None,
                 'offset': 0,
-                'length': 0,
+                'length': 2**32-1,
                 'file': None,
                 'recovery': {'status': None},
                 'dumpdates': {},
