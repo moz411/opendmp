@@ -51,8 +51,7 @@ class Data(threading.Thread):
                 data = self.record.data['fd'].recv(4096)
                 with self.record.data['lock']:
                     self.record.data['stats']['current'] += file.write(data)
-                if not data: 
-                    print('no data')
+                if not data:
                     return
             
     def terminate(self):

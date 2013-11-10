@@ -85,6 +85,8 @@ class Bu():
         if not(record.data['nlist']['original_path'] == ''):
             original_path = record.data['nlist']['original_path']
             filesystem = record.data['nlist']['original_path']
+        if record.data['nlist']['original_path'] == '/':
+            filesystem = ''
         
 
         '''If name is the null string:
