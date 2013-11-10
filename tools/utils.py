@@ -144,12 +144,7 @@ class all_ulonglong(ctypes.BigEndianStructure):
 
 def long_long_to_quad(d):
     u_quad = ndmp_u_quad()
-    if(d > 4294967295):
-        u_quad.high = d - 4294967295
-        u_quad.low = 4294967295
-    else:
-        u_quad.high = 0
-        u_quad.low = d
+    u_quad.high, u_quad.low = divmod(d, 1<<32)
     return u_quad
         
 

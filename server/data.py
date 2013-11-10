@@ -27,8 +27,8 @@ class Data(threading.Thread):
                 stdlog.info('Starting recover of ' + self.record.data['env']['FILESYSTEM'])
                 self.recover()
                 self.terminate()
-        except (OSError, ValueError, UnboundLocalError, BrokenPipeError) as e:
-            self.errmsg = e.strerror
+        except Exception as e:
+            self.errmsg = repr(e)
             stdlog.error('operation failed: ' + self.errmsg)
             self.terminate()
         finally:
@@ -45,16 +45,12 @@ class Data(threading.Thread):
                 if not data: return
 
     def recover(self):
-        data = b''
         with open(self.record.data['bu_fifo'],'wb') as file:
             nt.data_read().post(self.record)
             while not self.record.data['equit'].is_set():
-                data += self.record.data['fd'].recv(4096)
-                print('data')
-                print(len(data))
-                if len(data) >= 81920:
-                    with self.record.data['lock']:
-                        self.record.data['stats']['current'] += file.write(data)
+                data = self.record.data['fd'].recv(4096)
+                with self.record.data['lock']:
+                    self.record.data['stats']['current'] += file.write(data)
                 if not data: 
                     print('no data')
                     return

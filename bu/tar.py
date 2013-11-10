@@ -109,7 +109,7 @@ class Bu():
         record.data['bu_fifo'] = ut.give_fifo()
         
         # Preparing command line
-        command_line = 'star -x -U RENAME -no-fifo f=UNIXSOCKET FILESYSTEM'
+        command_line = 'star -x -B -U RENAME -no-fifo f=UNIXSOCKET FILESYSTEM'
         command_line = re.sub('UNIXSOCKET', record.data['bu_fifo'], command_line)
         command_line = re.sub('FILESYSTEM', filesystem, command_line)
         if(rename == '-s /OLD/NEW/'):
