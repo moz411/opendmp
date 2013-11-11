@@ -16,7 +16,7 @@ class Fh(threading.Thread):
     def run(self):
         stdlog.info('Starting File History of ' + self.record.data['env']['FILESYSTEM'])
         with open(self.record.fh['history'], mode='rb') as file:
-            while True:
+            while not self.record.fh['equit'].is_set():
                 time.sleep(0.001)
                 try:
                     (read, write, error) = select.select([file.fileno()], [], [])

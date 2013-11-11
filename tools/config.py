@@ -19,16 +19,22 @@ class Config:
                         'DATA_TIMEOUT': '5',
                         'DUMPDATES': '/etc/dumpdates',
                         'EMULATE_NETAPP': 'False',
-                        'EMULATE_CELERRA': 'False'
+                        'EMULATE_CELERRA': 'False',
+                        'EMULATE_ISILON': 'False'
                         }
     cfg = config['DEFAULT']
     threads = []
     
-    __version__ = '0.1.0'
-    vendor_name = 'GNU'
-    product_name = 'opendmp'
     (system, hostname, release, version, machine, processor) = platform.uname()
     (hostname, aliaslist, addresslist) = socket.gethostbyaddr(socket.gethostname())
+    
+    vendor_name = 'GNU'
+    product_name = 'opendmp'
+    revision_number = '1.0'
+    os_type = system
+    os_vers = release
+        
+        
     if(system in ['FreeBSD', 'OpenBSD','NetBSD']):
         hostid = os.popen('/sbin/sysctl -n kern.hostuuid').readlines()[0].encode()
     else:
@@ -57,5 +63,24 @@ class Config:
         if int(self.cfg['PORT']) < 1024 or int(self.cfg['PORT']) > 65535:
             print('Invalid value given for PORT, using default 10000')
             self.cfg['PORT'] = '10000'
-            
+        print(self)
+        if (self.cfg['EMULATE_NETAPP'] == 'True'):
+            self.vendor_name = 'Netapp'
+            self.product_name = 'Super Filer'
+            self.revision_number = '8.0R1'
+            self.os_type = 'Netapp'
+            self.os_vers = '8.0R1'
+        elif (self.cfg['EMULATE_CELERRA'] == 'True'):
+            self.vendor_name = 'EMC'
+            self.product_name = 'CELERRA'
+            self.revision_number = 'T.7.1.65.8'
+            self.os_type = 'CELERRA'
+            self.os_vers = 'T.7.1.65.8'
+        elif (self.cfg['EMULATE_ISILON'] == 'True'):
+            self.vendor_name = 'ISILON'
+            self.product_name = 'OneFS'
+            self.revision_number = '7.0.0'
+            self.os_type = 'OneFS'
+            self.os_vers = '7.0.0'
+        
         return self.cfg

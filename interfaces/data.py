@@ -9,6 +9,7 @@ from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config; threads = Config.threads
 import traceback, os, re, subprocess, shlex, socket
 from server.data import Data
+from server.data import Wait_Connection
 from server.fh import Fh
 from xdr import ndmp_const as const, ndmp_type as type
 from interfaces import notify as nt
@@ -32,13 +33,12 @@ class connect():
             try:
                 #record.data['fd'] = ip.get_best_data_conn(record.b.tcp_addr)
                 record.data['fd'] = ip.get_data_conn(record.b.tcp_addr)
+                record.data['host'], record.data['port'] = record.data['fd'].getsockname()
                 record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
                 stdlog.info('DATA> Connected to ' + repr(record.b.tcp_addr))
             except:
                 record.error = const.NDMP_DATA_HALT_CONNECT_ERROR
-                stdlog.error('DATA> Cannot connect to ' + repr(record.b.tcp_addr))
-                stdlog.debug(traceback.print_exc())
-            record.data['peer'] = record.data['fd'].getsockname()
+                stdlog.error('DATA> Cannot connect to ' + repr(record.b.tcp_addr) + ': ' + repr(e))
             
     def reply_v4(self, record):
         pass
@@ -64,49 +64,53 @@ class listen():
             pass
         elif(record.b.addr_type == const.NDMP_ADDR_TCP):
             try:
-                record.data['fd'] = ip.get_next_data_conn()
-                #ip.wait_connect(record.data['fd'])
                 record.data['addr_type'] = const.NDMP_ADDR_TCP
+                record.data['local_address'] = ip.get_next_data_conn()
+                record.data['host'], record.data['port'] = record.data['local_address'].getsockname()
                 record.data['state'] = const.NDMP_DATA_STATE_LISTEN
-                record.data['peer'] = record.data['fd'].getsockname()
+                # Launch the Wait Connection thread
+                listen_thread = Wait_Connection(record)
+                listen_thread.start()
+                threads.append(listen_thread)
             except OSError as e:
                 stdlog.error(e)
                 record.error = const.NDMP_ILLEGAL_ARGS_ERR
         
         
     def reply_v4(self, record):
-        if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-            return
-        elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
-            pass
-        elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
-            pass
-        elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
-            (host, port) = record.data['fd'].getsockname()
-            addr = ip.IPv4Address(host)
-            record.b.connect_addr = type.ndmp_addr_v4()
-            record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
-            record.b.connect_addr.tcp_addr = []
-            tcp_addr = type.ndmp_tcp_addr_v4(addr._ip_int_from_string(host),port,[])
-            record.b.connect_addr.tcp_addr.append(tcp_addr)
+        with record.data['lock']:
+            if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
+                record.error = const.NDMP_ILLEGAL_STATE_ERR
+                return
+            elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
+                pass
+            elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
+                pass
+            elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
+                addr = ip.IPv4Address(record.data['host'])
+                record.b.connect_addr = type.ndmp_addr_v4()
+                record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
+                record.b.connect_addr.tcp_addr = []
+                tcp_addr = type.ndmp_tcp_addr_v4(addr._ip_int_from_string(record.data['host']),
+                                                 record.data['port'],[])
+                record.b.connect_addr.tcp_addr.append(tcp_addr)
             
     def reply_v3(self, record):
-        if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-            return
-        elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
-            pass
-        elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
-            pass
-        elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
-            (host, port) = record.data['fd'].getsockname()
-            addr = ip.IPv4Address(host)
-            record.b.connect_addr = type.ndmp_addr_v3()
-            record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
-            record.b.connect_addr.tcp_addr = type.ndmp_tcp_addr()
-            record.b.connect_addr.tcp_addr.ip_addr = addr._ip_int_from_string(host)
-            record.b.connect_addr.tcp_addr.port = port
+        with self.record.data['lock']:
+            if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
+                record.error = const.NDMP_ILLEGAL_STATE_ERR
+                return
+            elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
+                pass
+            elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
+                pass
+            elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
+                addr = ip.IPv4Address(record.data['host'])
+                record.b.connect_addr = type.ndmp_addr_v3()
+                record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
+                record.b.connect_addr.tcp_addr = type.ndmp_tcp_addr()
+                record.b.connect_addr.tcp_addr.ip_addr = addr._ip_int_from_string(record.data['host'])
+                record.b.connect_addr.tcp_addr.port = record.data['port']
             
     request_v3 = request_v4
 
@@ -308,7 +312,9 @@ class get_state():
        set.'''
     
     def reply_v4(self, record):
-        with record.data['lock']:
+        print('reply_v4  1')
+        try:
+            print('reply_v4  2')
             sent = record.data['stats']['current']
             record.b.state = record.data['state']
             remain = record.data['stats']['total'] - sent
@@ -321,26 +327,27 @@ class get_state():
             record.b.est_bytes_remain = ut.long_long_to_quad(0)
             record.b.est_time_remain = 0
             record.b.invalid = 0
-        if(record.data['addr_type'] == const.NDMP_ADDR_TCP):
-            if(record.data['state'] == const.NDMP_DATA_STATE_CONNECTED):
-                intaddr = ip.ip_address(record.data['peer'][0])
-                addr = intaddr._ip_int_from_string(record.data['peer'][0])
-                record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_TCP,
-                                                             [type.ndmp_tcp_addr_v4(addr,
-                                                                               record.data['peer'][1],
+            try:
+                print('reply_v4  3')
+                if(record.data['addr_type'] == const.NDMP_ADDR_TCP):
+                    intaddr = ip.ip_address(record.data['host'])
+                    addr = intaddr._ip_int_from_string(record.data['host'])
+                    record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_TCP,
+                                                                 [type.ndmp_tcp_addr_v4(addr, record.data['port'],
                                                                  [type.ndmp_pval(name=b'', value=b'')])])
-            else:
+                elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
+                    record.b.data_connection_addr = type.ndmp_ipc_addr(b'')
+                else:
+                    record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
+            except ValueError:
                 record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
-                # record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
-        elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
-            record.b.data_connection_addr = type.ndmp_ipc_addr(b'')
-        elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
-            record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
-        record.b.read_offset = ut.long_long_to_quad(0)
-        record.b.read_length = ut.long_long_to_quad(0)
-            
-        stdlog.info('DATA> Bytes processed: ' + repr(sent))
-        #stdlog.info('DATA> Bytes remaining: ' + repr(remain))
+            record.b.read_offset = ut.long_long_to_quad(0)
+            record.b.read_length = ut.long_long_to_quad(0)
+                
+            stdlog.info('DATA> Bytes processed: ' + repr(sent))
+            #stdlog.info('DATA> Bytes remaining: ' + repr(remain))
+        except:
+            traceback.print_exc()
 
     reply_v3 = reply_v4
 

@@ -13,18 +13,12 @@ class get_host_info():
     '''This request is used to get information about the host on which the NDMP Server is running.'''
     
     def reply_v4(self, record):
-        if (cfg['EMULATE_NETAPP'] == 'True'):
-            record.b.os_type = b'Netapp'
-            record.b.os_vers = b'NetApp Release 8.0R1'
-        elif (cfg['EMULATE_CELERRA'] == 'True'):
-            record.b.os_type = b'DartOS'
-            record.b.os_vers = b'EMC2 Celerra File Server.T.7.1.65.8'
-        else:
-            record.b.os_type = c.system.encode()
-            record.b.os_vers = c.release.encode()
+        record.b.os_type = c.os_type.encode()
+        record.b.os_vers = c.os_vers.encode()
         record.b.hostid = c.hostid
         record.b.hostname = c.hostname.encode()
         record.b.auth_type = [const.NDMP_AUTH_MD5]
+        
 
     reply_v3 = reply_v4
         
@@ -34,18 +28,9 @@ class get_server_info():
     
     def reply_v4(self, record):
         if(record.connected):
-            if (cfg['EMULATE_NETAPP'] == 'True'):
-                record.b.vendor_name = b'Netapp'
-                record.b.product_name = b'Super Filer'
-                record.b.revision_number = b'8.0R1'
-            elif (cfg['EMULATE_CELERRA'] == 'True'):
-                record.b.vendor_name = b'EMC'
-                record.b.product_name = b'CELERRA'
-                record.b.revision_number = b'T.7.1.65.8'
-            else:
-                record.b.vendor_name = c.vendor_name.encode()
-                record.b.product_name = c.product_name.encode()
-                record.b.revision_number = c.__version__.encode()
+            record.b.vendor_name = c.vendor_name.encode()
+            record.b.product_name = c.product_name.encode()
+            record.b.revision_number = c.revision_number.encode()
         else:
             record.b.vendor_name = b''
             record.b.product_name = b''

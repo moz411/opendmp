@@ -5,7 +5,7 @@ from tools.config import Config; cfg = Config.cfg; c = Config
 import socket, threading, sys, os, time, shlex, traceback, subprocess, re
 from xdr import ndmp_const as const
 from interfaces import notify as nt, fh
-from tools import utils as ut
+from tools import utils as ut, ipaddress as ip
 
 class Data(threading.Thread):
     
@@ -25,7 +25,10 @@ class Data(threading.Thread):
                     self.update_dumpdate()
             elif self.record.data['operation'] == const.NDMP_DATA_OP_RECOVER:
                 stdlog.info('Starting recover of ' + self.record.data['env']['FILESYSTEM'])
-                self.recover()
+                try:
+                    self.recover()
+                except socket.timeout:
+                    stdlog.error('No more data')
                 self.terminate()
         except Exception as e:
             self.errmsg = repr(e)
@@ -39,20 +42,21 @@ class Data(threading.Thread):
     def backup(self):
         with open(self.record.data['bu_fifo'],'rb') as file:
             while not self.record.data['equit'].is_set():
-                data = file.read(4096)
+                data = file.read(2048)
                 with self.record.data['lock']:
                     self.record.data['stats']['current'] += self.record.data['fd'].send(data)
                 if not data: return
 
     def recover(self):
+        # For NetWorker, does not seems to close Tape server socket
+        self.record.data['fd'].settimeout(3)
         with open(self.record.data['bu_fifo'],'wb') as file:
             nt.data_read().post(self.record)
             while not self.record.data['equit'].is_set():
-                data = self.record.data['fd'].recv(4096)
+                data = self.record.data['fd'].recv(2048)
                 with self.record.data['lock']:
                     self.record.data['stats']['current'] += file.write(data)
-                if not data:
-                    return
+                if not data: return
             
     def terminate(self):
         try:
@@ -94,3 +98,25 @@ class Data(threading.Thread):
                                self.record.data['dumpdates'])
         except (OSError, ValueError, UnboundLocalError) as e:
             stdlog.error('update dumpdate failed' + repr(e))
+            
+            
+class Wait_Connection(threading.Thread):
+    
+    def __init__(self, record):
+        threading.Thread.__init__(self, name='Wait_Connection-' + repr(threading.activeCount()))
+        self.record = record
+    
+    def run(self):
+        try:
+            with self.record.data['lock']:
+                s = self.record.data['local_address']
+            stdlog.info('Data Listening on port ' + repr(s.getsockname()))
+            client, address = s.accept()
+            with self.record.data['lock']:
+                self.record.data['fd'] = client
+                self.record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
+            stdlog.info('Data connection from ' + repr(address))
+        except:
+            traceback.print_exc()
+        finally:
+            sys.exit()

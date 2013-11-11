@@ -2201,13 +2201,3 @@ def get_data_conn(peer_addresses):
         except (TypeError, socket.error, socket.gaierror) as e:
             stdlog.error('Cannot connect to peer ' + ip_addr + ' : ' + repr(e))
     return s
-
-def wait_connect(sock):
-    def listener():
-        (clientsocket, address) = sock.accept()
-        print('wait_connect')
-        print(clientsocket, address)
-        
-    thread = threading.Thread(target=listener)
-    thread.start()
-    return
