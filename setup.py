@@ -32,7 +32,7 @@
     SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-from distutils.core import setup, Extension
+from distutils.core import setup
 
 setup(
     name = 'opendmp',
@@ -42,6 +42,7 @@ setup(
     author_email = 'moz@gmx.fr',
     url = 'http://moz.free.fr/opendmp',
     license = 'GPL v3',
-    packages = ['opendmp', 'opendmp.utils'],
+    packages=['opendmp', 'opendmp.bu', 'opendmp.extensions', 'opendmp.interfaces', 'opendmp.opendmp.conf', 'opendmp.server', 'opendmp.tests', 'opendmp.tools', 'opendmp.xdr'],
+    package_dir={'': '..'},
     scripts = [''],
 )

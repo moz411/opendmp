@@ -312,9 +312,7 @@ class get_state():
        set.'''
     
     def reply_v4(self, record):
-        print('reply_v4  1')
         try:
-            print('reply_v4  2')
             sent = record.data['stats']['current']
             record.b.state = record.data['state']
             remain = record.data['stats']['total'] - sent
@@ -328,7 +326,6 @@ class get_state():
             record.b.est_time_remain = 0
             record.b.invalid = 0
             try:
-                print('reply_v4  3')
                 if(record.data['addr_type'] == const.NDMP_ADDR_TCP):
                     intaddr = ip.ip_address(record.data['host'])
                     addr = intaddr._ip_int_from_string(record.data['host'])

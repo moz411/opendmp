@@ -30,7 +30,7 @@ class Config:
     
     vendor_name = 'GNU'
     product_name = 'opendmp'
-    revision_number = '1.0'
+    revision_number = '0.1.0'
     os_type = system
     os_vers = release
         
@@ -63,24 +63,24 @@ class Config:
         if int(self.cfg['PORT']) < 1024 or int(self.cfg['PORT']) > 65535:
             print('Invalid value given for PORT, using default 10000')
             self.cfg['PORT'] = '10000'
-        print(self)
+
         if (self.cfg['EMULATE_NETAPP'] == 'True'):
-            self.vendor_name = 'Netapp'
-            self.product_name = 'Super Filer'
-            self.revision_number = '8.0R1'
-            self.os_type = 'Netapp'
-            self.os_vers = '8.0R1'
+            vendor_name = 'Netapp'
+            product_name = 'Super Filer'
+            revision_number = '8.0R1'
+            os_type = 'Netapp'
+            os_vers = '8.0R1'
         elif (self.cfg['EMULATE_CELERRA'] == 'True'):
-            self.vendor_name = 'EMC'
-            self.product_name = 'CELERRA'
-            self.revision_number = 'T.7.1.65.8'
-            self.os_type = 'CELERRA'
-            self.os_vers = 'T.7.1.65.8'
+            vendor_name = 'EMC'
+            product_name = 'CELERRA'
+            revision_number = 'T.7.1.65.8'
+            os_type = 'CELERRA'
+            os_vers = 'T.7.1.65.8'
         elif (self.cfg['EMULATE_ISILON'] == 'True'):
-            self.vendor_name = 'ISILON'
-            self.product_name = 'OneFS'
-            self.revision_number = '7.0.0'
-            self.os_type = 'OneFS'
-            self.os_vers = '7.0.0'
+            vendor_name = 'ISILON'
+            product_name = 'OneFS'
+            revision_number = '7.0.0'
+            os_type = 'OneFS'
+            os_vers = '7.0.0'
         
         return self.cfg

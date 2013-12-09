@@ -1,4 +1,4 @@
-""""
+"""
 Copyright (c) 2013 Thomas DUPOUY <moz@gmx.fr>.
 All rights reserved.
 
@@ -28,17 +28,24 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-import multiprocessing, sys, traceback, asyncore, argparse, faulthandler
+import sys, traceback, faulthandler
 from tools.log import Log
 from tools.config import Config
+from tools.daemon import Daemon
 from server.server import NDMPServer
-from tools import daemon, lockfile
-from tools.daemon import pidlockfile
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("-d", "--daemon", action="store_true", help="Run as daemon")
-args = parser.parse_args()
+class MyDaemon(Daemon):
+    def run(self):
+        while True:
+            server = NDMPServer(cfg['HOST'], int(cfg['PORT']))
+            try:
+                server.start()
+            except:
+                stdlog.debug('*'*60)
+                stdlog.debug(traceback.format_exc())
+                faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+                stdlog.debug('*'*60)
 
 # get config
 try:
@@ -47,7 +54,6 @@ except:
     print(traceback.format_exc().splitlines()[-1])
     print('Something wrong with configuration, exiting')
     sys.exit(1)
-    
     
 # get local logging
 try:
@@ -58,13 +64,20 @@ except:
     sys.exit(1)
     
 if __name__ == "__main__":
-    server = NDMPServer(cfg['HOST'], int(cfg['PORT']))
-    try:
-        server.start()
-    except:
-        stdlog.debug('*'*60)
-        stdlog.debug(traceback.format_exc())
-        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
-        stdlog.debug('*'*60)
-    finally:
-        stdlog.info("Shutting down")
+    daemon = MyDaemon('/var/run/opendmp/daemon.pid')
+    if len(sys.argv) == 2:
+        if 'start' == sys.argv[1]:
+            daemon.start()
+        elif 'stop' == sys.argv[1]:
+            daemon.stop()
+        elif 'restart' == sys.argv[1]:
+            daemon.restart()
+        else:
+            print("Unknown command")
+            sys.exit(2)
+        sys.exit(0)
+    else:
+        print("usage: %s start|stop|restart" % sys.argv[0])
+        sys.exit(2)
+        
+    

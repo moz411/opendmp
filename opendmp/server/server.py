@@ -52,7 +52,6 @@ class NDMPServer(object):
     def __init__(self, hostname, port):
         self.hostname = hostname
         self.port = port
-        stdlog.info('Starting NDMP server')
  
     def start(self):
         # Start a thread that will cleanup zombie children
