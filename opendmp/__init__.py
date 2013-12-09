@@ -28,7 +28,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-import sys, traceback, faulthandler
+import sys, os, traceback, faulthandler
 from tools.log import Log
 from tools.config import Config
 from tools.daemon import Daemon
@@ -64,7 +64,13 @@ except:
     sys.exit(1)
     
 if __name__ == "__main__":
-    daemon = MyDaemon('/var/run/opendmp/daemon.pid')
+    if not (os.path.exists(cfg['RUNDIR'])):
+        try:
+            os.mkdir(cfg['RUNDIR'], mode=0o700)
+        except OSError as e:
+            stdlog.error(e)
+            sys.exit(1)
+    daemon = MyDaemon(os.path.join(cfg['RUNDIR'],'daemon.pid'))
     if len(sys.argv) == 2:
         if 'start' == sys.argv[1]:
             daemon.start()

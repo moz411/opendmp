@@ -62,8 +62,6 @@ class Daemon:
 
     def start(self):
         """Start the daemon."""
-        stdlog.info("Starting NDMP server")
-
         # Check for a pidfile to see if the daemon already runs
         try:
             with open(self.pidfile,'r') as pf:
@@ -79,13 +77,12 @@ class Daemon:
             sys.exit(1)
         
         # Start the daemon
+        stdlog.info("Starting NDMP server")
         self.daemonize()
         self.run()
 
     def stop(self):
         """Stop the daemon."""
-
-        stdlog.info("Shutting down")
         # Get the pid from the pidfile
         try:
             with open(self.pidfile,'r') as pf:
@@ -99,6 +96,7 @@ class Daemon:
             sys.stderr.write(message.format(self.pidfile))
             return # not an error in a restart
 
+        stdlog.info("Shutting down")
         # Try killing the daemon process    
         try:
             while 1:
