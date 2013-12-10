@@ -79,14 +79,17 @@ def add_filesystem_unix(line, local):
     result = line.split()
     fs_physical_device = result[0]
     fs_logical_device = result[2]
-    fs_type = re.sub('\(|,', '', result[3])
+    if(c.system == 'Linux'): 
+        fs_type = result[4]
+    else:
+        fs_type = re.sub('\(|,', '', result[3])
     try:
         (f_bsize, f_frsize, f_blocks, f_bfree, 
          f_bavail, f_files, f_ffree, f_favail, 
          f_flag, f_namemax) = os.statvfs(fs_logical_device)
     except OSError as e:
         stdlog.error(e)
-        raise
+        return None
     if (cfg['EMULATE_NETAPP'] == 'True'):
         avail = b'dump'
     else:

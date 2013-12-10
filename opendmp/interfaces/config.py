@@ -2,11 +2,11 @@
 
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config 
-import os, re, subprocess, shlex, traceback
+import os, re, traceback
+from subprocess import Popen, PIPE
 import xdr.ndmp_const as const
 import tools.utils as ut
-from xdr.ndmp_type import (ndmp_auth_attr, ndmp_class_list, 
-                           ndmp_class_version)
+from xdr.ndmp_type import (ndmp_auth_attr, ndmp_class_list)
 
 class get_host_info():
     '''This request is used to get information about the host on which the NDMP Server is running.'''
@@ -89,18 +89,21 @@ class get_fs_info():
     def reply_v4(self, record):
         record.b.fs_info = []
         if(c.system in c.Unix):
-            for line in os.popen('mount -t zfs,ufs,gfs,reiserfs,ext2,ext3,ext4').readlines():
-                try:
-                    fs = ut.add_filesystem_unix(line, local='y') # local fs
-                    record.b.fs_info.append(fs)
-                except OSError:
-                    pass
-            for line in os.popen('mount -t nfs,smbfs,cifs,vboxfs,vmfs,fuse').readlines():
-                try:
-                    fs = ut.add_filesystem_unix(line, local='n') # remote fs
-                    record.b.fs_info.append(fs)
-                except OSError:
-                    pass
+            try:
+                lines, stderr = Popen(['mount','-t','zfs,ufs,gfs,reiserfs,ext2,ext3,ext4'], 
+                                  stdout=PIPE, stderr=PIPE).communicate()
+                for line in lines.splitlines():
+                    fs = ut.add_filesystem_unix(line.decode(), local='y') # local fs
+                    if fs: record.b.fs_info.append(fs)
+                lines, stderr = Popen(['mount','-t','nfs,smbfs,cifs,vboxsf,vmfs,fuse'], 
+                              stdout=PIPE, stderr=PIPE).communicate()
+                for line in lines.splitlines():
+                    fs = ut.add_filesystem_unix(line.decode(), local='n') # remote fs
+                    if fs: record.b.fs_info.append(fs)
+            except OSError:
+                stdlog.error(stderr)
+                stdlog.debug(traceback.print_exc())
+                record.error = const.NDMP_NOT_SUPPORTED_ERR
                 
     reply_v3 = reply_v4
 
