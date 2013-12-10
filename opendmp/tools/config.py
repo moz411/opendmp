@@ -1,4 +1,5 @@
-import sys, os, configparser, platform, socket, traceback
+import os, configparser, platform, socket, traceback
+from subprocess import Popen, PIPE
 
 class Config:
     ''' Read and interpret the opendmp configuration file.
@@ -36,9 +37,11 @@ class Config:
         
         
     if(system in ['FreeBSD', 'OpenBSD','NetBSD']):
-        hostid = os.popen('/sbin/sysctl -n kern.hostuuid').readlines()[0].encode()
+        hostid,stderr = Popen(['/sbin/sysctl','-n','kern.hostuuid'], 
+                              stdout=PIPE, stderr=PIPE).communicate()
     else:
-        hostid = os.popen('hostid').readlines()[0].encode()
+        hostid,stderr = Popen(['hostid'], 
+                              stdout=PIPE, stderr=PIPE).communicate()
     Unix = ['Linux','SunOS','AIX','HP-UX','Tru64','FreeBSD','OpenBSD','NetBSD']
     Windows = ['NT']
 

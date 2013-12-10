@@ -182,7 +182,7 @@ class Record():
         except:
             self.error =  const.NDMP_NOT_SUPPORTED_ERR
             stdlog.error(message + '_reply not supported')
-            stdlog.debug(sys.exc_info()[1])
+            stdlog.debug(traceback.print_exc())
             return
 
         if (self.h.message_type == const.NDMP_MESSAGE_REPLY):
@@ -191,14 +191,14 @@ class Record():
             except NameError:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
                 stdlog.error(message + '_reply not supported')
-                stdlog.debug(sys.exc_info()[1])
+                stdlog.debug(traceback.print_exc())
                 return
             try:    
                 exec(func + '().reply_' + self.protocol_version + '(self)')
             except NameError:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
                 stdlog.error(message + '_reply not supported')
-                stdlog.debug(sys.exc_info()[1])
+                stdlog.debug(traceback.print_exc())
                 return
             
             try:

@@ -2,12 +2,11 @@
 
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config 
-import os, re, subprocess, shlex
+import os, re, subprocess, shlex, traceback
 import xdr.ndmp_const as const
 import tools.utils as ut
 from xdr.ndmp_type import (ndmp_auth_attr, ndmp_class_list, 
                            ndmp_class_version)
-import inspect
 
 class get_host_info():
     '''This request is used to get information about the host on which the NDMP Server is running.'''
@@ -19,10 +18,8 @@ class get_host_info():
         record.b.hostname = c.hostname.encode()
         record.b.auth_type = [const.NDMP_AUTH_MD5]
         
-
     reply_v3 = reply_v4
         
-
 class get_server_info():
     '''This request is used to get information about the NDMP Server implementation.'''
     
@@ -38,7 +35,6 @@ class get_server_info():
         record.b.auth_type = [const.NDMP_AUTH_MD5]
 
     reply_v3 = reply_v4
-
 
 class get_connection_type():
     '''This request returns a list of the data connection types supported by the NDMP Server.'''
@@ -92,21 +88,14 @@ class get_fs_info():
     
     def reply_v4(self, record):
         record.b.fs_info = []
-        
         if(c.system in c.Unix):
-            command_line = 'mount -t zfs,ufs,gfs,reiserfs,ext2,ext3,ext4'
-            mount = subprocess.call(shlex.split(command_line),
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
-            for line in mount.stdout.readlines():
+            for line in os.popen('mount -t zfs,ufs,gfs,reiserfs,ext2,ext3,ext4').readlines():
                 try:
                     fs = ut.add_filesystem_unix(line, local='y') # local fs
                     record.b.fs_info.append(fs)
                 except OSError:
                     pass
-            command_line = 'mount -t nfs,smbfs,cifs,vboxfs,vmfs,fuse'
-            mount = subprocess.call(shlex.split(command_line),
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False)
-            for line in mount.stdout.readlines():
+            for line in os.popen('mount -t nfs,smbfs,cifs,vboxfs,vmfs,fuse').readlines():
                 try:
                     fs = ut.add_filesystem_unix(line, local='n') # remote fs
                     record.b.fs_info.append(fs)

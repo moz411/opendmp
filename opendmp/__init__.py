@@ -34,18 +34,20 @@ from tools.config import Config
 from tools.daemon import Daemon
 from server.server import NDMPServer
 
+def start_server():
+    server = NDMPServer(cfg['HOST'], int(cfg['PORT']))
+    try:
+        server.start()
+    except:
+        stdlog.debug('*'*60)
+        stdlog.debug(traceback.format_exc())
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        stdlog.debug('*'*60)
 
 class MyDaemon(Daemon):
     def run(self):
         while True:
-            server = NDMPServer(cfg['HOST'], int(cfg['PORT']))
-            try:
-                server.start()
-            except:
-                stdlog.debug('*'*60)
-                stdlog.debug(traceback.format_exc())
-                faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
-                stdlog.debug('*'*60)
+            start_server()
 
 # get config
 try:
@@ -72,6 +74,8 @@ if __name__ == "__main__":
             sys.exit(1)
     daemon = MyDaemon(os.path.join(cfg['RUNDIR'],'daemon.pid'))
     if len(sys.argv) == 2:
+        if '--debug' == sys.argv[1]:
+            start_server()
         if 'start' == sys.argv[1]:
             daemon.start()
         elif 'stop' == sys.argv[1]:
@@ -85,5 +89,4 @@ if __name__ == "__main__":
     else:
         print("usage: %s start|stop|restart" % sys.argv[0])
         sys.exit(2)
-        
-    
+
