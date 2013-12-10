@@ -56,6 +56,10 @@ except:
     print(traceback.format_exc().splitlines()[-1])
     print('Something wrong with configuration, exiting')
     sys.exit(1)
+
+# Change loglevel if passed in option
+if (len(sys.argv) == 2 and sys.argv[1] == '--debug'):
+    cfg['LOGLEVEL'] = 'debug'
     
 # get local logging
 try:
@@ -75,6 +79,7 @@ if __name__ == "__main__":
     daemon = MyDaemon(os.path.join(cfg['RUNDIR'],'daemon.pid'))
     if len(sys.argv) == 2:
         if '--debug' == sys.argv[1]:
+            stdlog.setLevel(10)
             start_server()
         if 'start' == sys.argv[1]:
             daemon.start()

@@ -1,4 +1,4 @@
-import logging.handlers, sys
+import logging.handlers
 from tools.config import Config; cfg = Config.cfg
 
 class Log:
