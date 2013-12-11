@@ -1,4 +1,4 @@
-import sys, struct, time, random, hashlib, traceback, threading
+import struct, time, random, hashlib, traceback, threading
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const, ndmp_type as type

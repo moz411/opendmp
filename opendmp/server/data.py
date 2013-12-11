@@ -6,6 +6,7 @@ import socket, threading, sys, time, traceback
 from xdr import ndmp_const as const
 from interfaces import notify as nt
 from tools import utils as ut
+from subprocess import TimeoutExpired
 
 class Data(threading.Thread):
     
@@ -60,7 +61,12 @@ class Data(threading.Thread):
             
     def terminate(self):
         try:
-            self.record.data['process'].wait()
+            self.record.data['process'].wait(5)
+        except TimeoutExpired:
+            stdlog.error('killing bu process')
+            self.record.data['process'].kill()
+            
+        try:
             self.record.data['process'].poll()
             if self.errmsg:
                 self.record.data['retcode'] = 255
