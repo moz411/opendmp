@@ -7,12 +7,13 @@ of data that can be written to the tape device.
 '''
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config; threads = Config.threads
-import traceback, os, subprocess, shlex
+import os, subprocess, shlex, time
 from server.data import Data
 from server.data import Wait_Connection
 from server.fh import Fh
 from xdr import ndmp_const as const, ndmp_type as type
 from tools import utils as ut, ipaddress as ip
+from interfaces import notify as nt
 
 class connect():
     '''This request is used by the DMA to instruct the Data Server to
@@ -160,6 +161,22 @@ class start_backup():
                                                           cwd=record.data['env']['FILESYSTEM'],
                                                           stdout=listing, stderr=error, shell=False)
         
+        # Check if the bu process have already died
+        time.sleep(1)
+        retcode = record.data['process'].poll()
+        if retcode:
+            print('bu failed')
+            record.data['state'] = const.NDMP_DATA_STATE_HALTED
+            record.data['operation'] = const.NDMP_DATA_OP_NOACTION
+            record.error = const.NDMP_ILLEGAL_STATE_ERR
+            record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
+            with open(record.data['bu_fifo'] + '.err', 'rb') as logfile:
+                for line in logfile:
+                    record.data['error'].append(line.strip())
+                    stdlog.error(line.decode())
+            nt.data_halted().post(record)
+            return
+        
         # Launch the File History generation thread
         fh_thread = Fh(record)
         fh_thread.start()
@@ -306,39 +323,36 @@ class get_state():
        set.'''
     
     def reply_v4(self, record):
+        sent = record.data['stats']['current']
+        record.b.state = record.data['state']
+        remain = record.data['stats']['total'] - sent
+        record.b.unsupported = (const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID |
+                                const.NDMP_DATA_STATE_EST_BYTES_REMAIN_INVALID)
+        record.b.operation = record.data['operation']
+        record.b.halt_reason = record.data['halt_reason']
+        record.b.bytes_processed = ut.long_long_to_quad(sent)
+        # record.b.est_bytes_remain = ut.long_long_to_quad(remain)
+        record.b.est_bytes_remain = ut.long_long_to_quad(0)
+        record.b.est_time_remain = 0
+        record.b.invalid = 0
         try:
-            sent = record.data['stats']['current']
-            record.b.state = record.data['state']
-            remain = record.data['stats']['total'] - sent
-            record.b.unsupported = (const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID |
-                                    const.NDMP_DATA_STATE_EST_BYTES_REMAIN_INVALID)
-            record.b.operation = record.data['operation']
-            record.b.halt_reason = record.data['halt_reason']
-            record.b.bytes_processed = ut.long_long_to_quad(sent)
-            # record.b.est_bytes_remain = ut.long_long_to_quad(remain)
-            record.b.est_bytes_remain = ut.long_long_to_quad(0)
-            record.b.est_time_remain = 0
-            record.b.invalid = 0
-            try:
-                if(record.data['addr_type'] == const.NDMP_ADDR_TCP):
-                    intaddr = ip.ip_address(record.data['host'])
-                    addr = intaddr._ip_int_from_string(record.data['host'])
-                    record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_TCP,
-                                                                 [type.ndmp_tcp_addr_v4(addr, record.data['port'],
-                                                                 [type.ndmp_pval(name=b'', value=b'')])])
-                elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
-                    record.b.data_connection_addr = type.ndmp_ipc_addr(b'')
-                else:
-                    record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
-            except ValueError:
+            if(record.data['addr_type'] == const.NDMP_ADDR_TCP):
+                intaddr = ip.ip_address(record.data['host'])
+                addr = intaddr._ip_int_from_string(record.data['host'])
+                record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_TCP,
+                                                             [type.ndmp_tcp_addr_v4(addr, record.data['port'],
+                                                             [type.ndmp_pval(name=b'', value=b'')])])
+            elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
+                record.b.data_connection_addr = type.ndmp_ipc_addr(b'')
+            else:
                 record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
-            record.b.read_offset = ut.long_long_to_quad(0)
-            record.b.read_length = ut.long_long_to_quad(0)
-                
-            stdlog.info('DATA> Bytes processed: ' + repr(sent))
-            #stdlog.info('DATA> Bytes remaining: ' + repr(remain))
-        except:
-            traceback.print_exc()
+        except ValueError:
+            record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
+        record.b.read_offset = ut.long_long_to_quad(0)
+        record.b.read_length = ut.long_long_to_quad(0)
+            
+        stdlog.info('DATA> Bytes processed: ' + repr(sent))
+        #stdlog.info('DATA> Bytes remaining: ' + repr(remain))
 
     reply_v3 = reply_v4
 

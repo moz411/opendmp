@@ -194,6 +194,7 @@ class Record():
                 return
             
             try:
+                # run "reply" function
                 exec(func + '().reply_' + self.protocol_version + '(self)')
             except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
@@ -228,15 +229,17 @@ class Record():
                 # debug
                 stdlog.debug('\t' + repr(self.b))
                 stdlog.debug('')
+                # run "request" function
                 exec(func + '().request_' + self.protocol_version +'(self)')
             except (TypeError, XDRError, AttributeError, EOFError):
                 self.error =  const.NDMP_XDR_DECODE_ERR
                 stdlog.error('Error processing message ' + message + '_request_' + self.protocol_version)
                 stdlog.debug(traceback.print_exc())
+                return
             except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
                 stdlog.error(message + '_request not supported')
-                stdlog.debug(sys.exc_info()[1])
+                stdlog.debug(traceback.print_exc())
                 return    
     
     def verify_connected(self):

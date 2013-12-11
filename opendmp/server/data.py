@@ -2,10 +2,10 @@
 
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-import socket, threading, sys, os, time, shlex, traceback, subprocess, re
+import socket, threading, sys, time, traceback
 from xdr import ndmp_const as const
-from interfaces import notify as nt, fh
-from tools import utils as ut, ipaddress as ip
+from interfaces import notify as nt
+from tools import utils as ut
 
 class Data(threading.Thread):
     
@@ -69,7 +69,7 @@ class Data(threading.Thread):
                 self.record.data['retcode'] = self.record.data['process'].returncode
             with open(self.record.data['bu_fifo'] + '.err', 'rb') as logfile:
                 for line in logfile:
-                  self.record.data['error'].append(line.strip())
+                    self.record.data['error'].append(line.strip())
             self.record.data['fd'].close()
             # cleanup temporary files
             for tmpfile in [self.record.data['bu_fifo'] + '.err', 

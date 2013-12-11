@@ -1,7 +1,6 @@
 '''various functions, mainly used to pack NDMP replies'''
 
-import os, sys, struct, re, traceback, time, ctypes, binascii, random, stat, csv, pickle
-import multiprocessing
+import os, sys, re, traceback, time, ctypes, binascii, pickle
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 import xdr.ndmp_const as const
@@ -196,22 +195,22 @@ def clean_file(filename):
         
 def check_file_mode(st_mode):
     if (st_mode == 10):
-        type =  const.NDMP_FILE_REG
+        ftype =  const.NDMP_FILE_REG
     elif (st_mode == 4):
-        type =  const.NDMP_FILE_DIR
+        ftype =  const.NDMP_FILE_DIR
     elif(st_mode == 12):
-        type =  const.NDMP_FILE_SLINK
+        ftype =  const.NDMP_FILE_SLINK
     elif(st_mode == 1):
-        type =  const.NDMP_FILE_FIFO
+        ftype =  const.NDMP_FILE_FIFO
     elif(st_mode == 6):
-        type =  const.NDMP_FILE_BSPEC
+        ftype =  const.NDMP_FILE_BSPEC
     elif(st_mode == 2):
-        type =  const.NDMP_FILE_CSPEC
+        ftype =  const.NDMP_FILE_CSPEC
     elif(st_mode == 14):
-        type =  const.NDMP_FILE_SOCK
+        ftype =  const.NDMP_FILE_SOCK
     else:
-        type =  const.NDMP_FILE_OTHER
-    return (type)
+        ftype =  const.NDMP_FILE_OTHER
+    return (ftype)
 
 def touchopen(filename, *args, **kwargs):
     open(filename, "a").close() # "touch" file
