@@ -165,7 +165,6 @@ class start_backup():
         time.sleep(1)
         retcode = record.data['process'].poll()
         if retcode:
-            print('bu failed')
             record.data['state'] = const.NDMP_DATA_STATE_HALTED
             record.data['operation'] = const.NDMP_DATA_OP_NOACTION
             record.error = const.NDMP_ILLEGAL_STATE_ERR
@@ -175,6 +174,14 @@ class start_backup():
                     record.data['error'].append(line.strip())
                     stdlog.error(line.decode())
             nt.data_halted().post(record)
+            
+            try:
+                for tmpfile in [record.data['bu_fifo'] + '.err',
+                                record.data['bu_fifo'] + '.lst',
+                                record.data['bu_fifo']]:
+                    if tmpfile is not None: ut.clean_file(tmpfile)
+            except OSError:
+                stdlog.error('cleanup of history files failed')
             return
         
         # Launch the File History generation thread
@@ -292,6 +299,29 @@ class start_recover():
                                                    stderr=error,
                                                    cwd=record.data['nlist']['destination_dir'],
                                                    shell=False)
+        
+        # Check if the bu process have already died
+        time.sleep(1)
+        retcode = record.data['process'].poll()
+        if retcode:
+            record.data['state'] = const.NDMP_DATA_STATE_HALTED
+            record.data['operation'] = const.NDMP_DATA_OP_NOACTION
+            record.error = const.NDMP_ILLEGAL_STATE_ERR
+            record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
+            with open(record.data['bu_fifo'] + '.err', 'rb') as logfile:
+                for line in logfile:
+                    record.data['error'].append(line.strip())
+                    stdlog.error(line.decode())
+            nt.data_halted().post(record)
+            
+            try:
+                for tmpfile in [record.data['bu_fifo'] + '.err',
+                                record.data['bu_fifo']]:
+                    if tmpfile is not None: ut.clean_file(tmpfile)
+            except OSError:
+                stdlog.error('cleanup of history files failed')
+                
+            return
     
     def reply_v4(self, record):
         pass
