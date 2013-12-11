@@ -1,11 +1,10 @@
-import multiprocessing, sys, struct, time, random, hashlib, traceback, threading
+import sys, struct, time, random, hashlib, traceback, threading
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const, ndmp_type as type
 from tools import utils as ut
 from xdrlib import Error as XDRError
 from xdr.ndmp_pack import NDMPPacker, NDMPUnpacker
-from interfaces import notify
 
 class Record():
     '''This class will traverse the whole NDMP session, and keep
@@ -193,9 +192,10 @@ class Record():
                 stdlog.error(message + '_reply not supported')
                 stdlog.debug(traceback.print_exc())
                 return
-            try:    
+            
+            try:
                 exec(func + '().reply_' + self.protocol_version + '(self)')
-            except NameError:
+            except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
                 stdlog.error(message + '_reply not supported')
                 stdlog.debug(traceback.print_exc())
@@ -228,13 +228,12 @@ class Record():
                 # debug
                 stdlog.debug('\t' + repr(self.b))
                 stdlog.debug('')
-                #stdlog.debug('-'*60)
                 exec(func + '().request_' + self.protocol_version +'(self)')
             except (TypeError, XDRError, AttributeError, EOFError):
                 self.error =  const.NDMP_XDR_DECODE_ERR
                 stdlog.error('Error processing message ' + message + '_request_' + self.protocol_version)
                 stdlog.debug(traceback.print_exc())
-            except NameError:
+            except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
                 stdlog.error(message + '_request not supported')
                 stdlog.debug(sys.exc_info()[1])

@@ -7,12 +7,11 @@ of data that can be written to the tape device.
 '''
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config; threads = Config.threads
-import traceback, os, re, subprocess, shlex, socket
+import traceback, os, subprocess, shlex
 from server.data import Data
 from server.data import Wait_Connection
 from server.fh import Fh
 from xdr import ndmp_const as const, ndmp_type as type
-from interfaces import notify as nt
 from tools import utils as ut, ipaddress as ip
 
 class connect():
@@ -36,7 +35,7 @@ class connect():
                 record.data['host'], record.data['port'] = record.data['fd'].getsockname()
                 record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
                 stdlog.info('DATA> Connected to ' + repr(record.b.tcp_addr))
-            except:
+            except Exception as e:
                 record.error = const.NDMP_DATA_HALT_CONNECT_ERROR
                 stdlog.error('DATA> Cannot connect to ' + repr(record.b.tcp_addr) + ': ' + repr(e))
             
@@ -136,7 +135,7 @@ class start_backup():
             return
         else:
             # TODO: implement a real plugin system
-            record.data['bu_type']  = bu_type
+            record.data['bu_type'] = bu_type
             from bu import tar
             Bu = tar.Bu()
 
@@ -151,10 +150,7 @@ class start_backup():
             record.data['env'][name] =  value
         
         # Generate the command line
-        try:
-            command_line = Bu.backup(record)
-        except (OSError, AttributeError) as e:
-            stdlog.error(e)
+        command_line = Bu.backup(record)
         stdlog.debug(command_line)
         
         # Launch the backup process
@@ -233,6 +229,13 @@ class start_recover():
             stdlog.error('variable FILESYSTEM does not exist')
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
+        try:
+            assert(os.path.exists(record.data['nlist']['destination_dir']))
+        except (KeyError, AssertionError) as e:
+            stdlog.error('destination directory does not exist')
+            record.error = const.NDMP_ILLEGAL_ARGS_ERR
+            return
+            
             
         try:
             record.data['nlist'] = {
@@ -248,21 +251,12 @@ class start_recover():
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         
-        # Creating the destination dir
-        if not(os.path.exists(record.data['nlist']['destination_dir'])):
-            stdlog.info('Path ' + record.data['nlist']['destination_dir'] + ' does not exist, creating')
-            try:
-                os.makedirs(record.data['nlist']['destination_dir'])
-            except OSError as e:
-                stdlog.error(e)
-                record.error = const.NDMP_UNDEFINED_ERR
-                return
-        
         # Generate the command line
         try:
             command_line = Bu.recover(record)
         except (OSError, AttributeError, KeyError) as e:
             stdlog.error(e)
+            record.error = const.NDMP_NOT_SUPPORTED_ERR
             return
         stdlog.debug(command_line)
         

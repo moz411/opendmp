@@ -213,8 +213,13 @@ def check_file_mode(st_mode):
         type =  const.NDMP_FILE_OTHER
     return (type)
 
+def touchopen(filename, *args, **kwargs):
+    open(filename, "a").close() # "touch" file
+    return open(filename, *args, **kwargs)
+
 def read_dumpdates(file):
-    with open(file, 'rb') as dumpdates:
+    # Read dumpdates or create it
+    with touchopen(file, 'rb') as dumpdates:
         return pickle.load(dumpdates)
 
 def write_dumpdates(file, dumpdates):
