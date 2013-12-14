@@ -28,21 +28,7 @@ info = ndmp_butype_info(butype_name=b'tar',
 class Bu():
     
     def backup(self, record):
-        
-        # Retrieving FILESYSTEM to backup
-        # Retrieving FILESYSTEM to backup
-        try:
-            if(record.data['env']['FILES']):
-                record.data['env']['FILESYSTEM'] = record.data['env']['FILES']
-        except KeyError:
-            pass
-        try:
-            assert(record.data['env']['FILESYSTEM'] != None)
-        except (KeyError, AssertionError):
-            stdlog.error('variable FILESYSTEM does not exists')
-            record.error = const.NDMP_ILLEGAL_ARGS_ERR
-            raise
-        
+
         # Preparing FIFO for interaction with Backup Utility
         record.data['bu_fifo'] = ut.give_fifo()
         #record.data['bu_fifo'] = ut.give_socket(record.data['fd'])

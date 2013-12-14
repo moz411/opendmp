@@ -150,6 +150,25 @@ class start_backup():
             value = pval.value.decode('utf-8', 'replace').strip()
             record.data['env'][name] =  value
         
+        # Retrieving FILESYSTEM to backup
+        try:
+            if(record.data['env']['FILES']):
+                record.data['env']['FILESYSTEM'] = record.data['env']['FILES']
+        except KeyError:
+            pass
+        try:
+            assert(record.data['env']['FILESYSTEM'] != None)
+        except (KeyError, AssertionError):
+            stdlog.error('variable FILESYSTEM does not exists')
+            record.error = const.NDMP_ILLEGAL_ARGS_ERR
+            return
+        try:
+            assert(os.path.exists(record.data['env']['FILESYSTEM']))
+        except (KeyError, AssertionError):
+            stdlog.error('FILESYSTEM ' + record.data['env']['FILESYSTEM'] + ' does not exists')
+            record.error = const.NDMP_ILLEGAL_ARGS_ERR
+            return
+        
         # Generate the command line
         command_line = Bu.backup(record)
         stdlog.debug(command_line)
