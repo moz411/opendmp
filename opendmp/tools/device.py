@@ -96,24 +96,8 @@ class Device():
                 record.error = const.NDMP_NO_DEVICE_ERR
             else:
                 record.error = const.NDMP_IO_ERR
+            raise
             
     def write(self, record):
-        count = 0
-        print('write 2')
-        try:
-            count = os.write(self.fd, self.data)
-        except (OSError, IOError) as e:
-            stdlog.error(self.path + ': ' + repr(e))
-            if(e.errno == errno.EACCES):
-                record.error = const.NDMP_WRITE_PROTECT_ERR
-            elif(e.errno == errno.ENOENT):
-                record.error = const.NDMP_NO_DEVICE_ERR
-            elif(e.errno == errno.EBUSY):
-                record.error = const.NDMP_DEVICE_BUSY_ERR
-            elif(e.errno == errno.ENODEV):
-                record.error = const.NDMP_NO_DEVICE_ERR
-            elif(e.errno == errno.ENOSPC):
-                record.error = const.NDMP_EOM_ERR
-            else:
-                record.error = const.NDMP_IO_ERR
+        count = os.write(self.fd, self.data)
         return count*8*1024 # in bits

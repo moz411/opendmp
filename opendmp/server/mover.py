@@ -1,7 +1,7 @@
 '''This module create a socket for Mover operations
 and process the data stream'''
 
-import socket, threading, sys, traceback
+import socket, threading, sys, traceback, errno
 from tools import ipaddress as ip
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
@@ -52,8 +52,27 @@ class Mover(threading.Thread):
                 if not self.record.device.data:
                     self.terminate()
             except (OSError, IOError) as e:
-                stdlog.error('Mover write failed: ' + repr(e))
-                self.terminate()
+                stdlog.error(self.record.device.path + ': ' + e.strerror)
+                if(e.errno == errno.EACCES):
+                    self.record.error = const.NDMP_WRITE_PROTECT_ERR
+                    self.terminate()
+                elif(e.errno == errno.ENOENT):
+                    self.record.error = const.NDMP_NO_DEVICE_ERR
+                    self.terminate()
+                elif(e.errno == errno.EBUSY):
+                    self.record.error = const.NDMP_DEVICE_BUSY_ERR
+                    self.terminate()
+                elif(e.errno == errno.ENODEV):
+                    self.record.error = const.NDMP_NO_DEVICE_ERR
+                    self.terminate()
+                elif(e.errno == errno.ENOSPC):
+                    self.record.error = const.NDMP_EOM_ERR
+                    with self.record.mover['lock']:
+                        self.record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
+                    self.pause()
+                else:
+                    self.record.error = const.NDMP_IO_ERR
+                    self.terminate()
     
     def recover(self):
         self.record.device.count = self.record.mover['record_size']
@@ -64,21 +83,45 @@ class Mover(threading.Thread):
                     self.record.mover['bytes_moved'] += self.sock.send(self.record.device.data)
                 if not self.record.device.data:
                     self.terminate()
-            except socket.error as e:
-                stdlog.error(repr(e))
-                self.terminate()
             except (OSError, IOError) as e:
-                stdlog.error('Mover read failed: ' + e.strerror)
-                self.terminate()
+                stdlog.error(self.record.device.path + ': ' + e.strerror)
+                if(e.errno == errno.EACCES):
+                    self.record.error = const.NDMP_WRITE_PROTECT_ERR
+                    self.terminate()
+                elif(e.errno == errno.ENOENT):
+                    self.record.error = const.NDMP_NO_DEVICE_ERR
+                    self.terminate()
+                elif(e.errno == errno.EBUSY):
+                    self.record.error = const.NDMP_DEVICE_BUSY_ERR
+                    self.terminate()
+                elif(e.errno == errno.ENODEV):
+                    self.record.error = const.NDMP_NO_DEVICE_ERR
+                    self.terminate()
+                elif(e.errno == errno.ENOSPC):
+                    self.record.error = const.NDMP_EOM_ERR
+                    with self.record.mover['lock']:
+                        self.record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
+                    self.pause()
+                else:
+                    self.record.error = const.NDMP_IO_ERR
+                    self.terminate()
+                
+    def pause(self):
+        with self.record.mover['lock']:
+            stdlog.info('MOVER> pausing status ' + repr(const.ndmp_error[self.record.error]))
+            self.record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
+            self.record.queue.put(nt.mover_paused().post(self.record))
+        self.record.mover['econt'].wait() # Wait for the DMA order to continue the operation
+        self.backup()
             
     def terminate(self):
-        self.record.mover['equit'] = False
+        self.record.mover['equit'].clear()
         try:
             self.fd.close()
         except socket.error as e:
             stdlog.error(repr(e))
         with self.record.mover['lock']:
-            stdlog.info('closing status ' + repr(const.ndmp_error[self.record.error]))
+            stdlog.info('MOVER> closing status ' + repr(const.ndmp_error[self.record.error]))
             self.record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
         self.record.queue.put(nt.mover_halted().post(self.record))
         sys.exit()
