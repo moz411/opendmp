@@ -4,16 +4,20 @@ from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 
 class Device():
-    path = None
-    fd = None
-    hctl = None
-    opened = False
-    sgio = None
-    mt = None
-    datain_len = None
-    mode = os.O_RDWR
-    lock = threading.RLock()
     
+    def __init__(self, path=None):
+        self.path = path
+        self.data = None
+        self.fd = None
+        self.hctl = None
+        self.opened = False
+        self.sgio = None
+        self.mt = None
+        self.datain_len = None
+        self.mode = os.O_RDWR
+        self.lock = threading.RLock()
+        self.count = 0
+        
     def __repr__(self):
         out = []
         out += ['%s' % const.ndmp_tape_open_mode[self.mode]]
@@ -21,10 +25,6 @@ class Device():
         out += ['opened=%s' % self.opened]
         return '%s' % ', '.join(out)
     __str__ = __repr__    
-
-    def __init__(self, path=None):
-        self.path = path
-        self.data = None
         
     def open(self, record):
         if(record.h.message == const.NDMP_TAPE_OPEN):
@@ -99,5 +99,5 @@ class Device():
             raise
             
     def write(self, record):
-        count = os.write(self.fd, self.data)
-        return count*8*1024 # in bits
+        self.count = os.write(self.fd, self.data)
+        return self.count*8*1024 # in bits

@@ -38,8 +38,8 @@ class Bu():
         if (c.system == 'FreeBSD'):
             command_line = 'star -c -dump -no-fifo f=UNIXSOCKET -find . INCREMENTAL -xdev -exec stat -r {} \;'
         elif (c.system == 'Linux'):
-            #command_line = 'star -c -dump -no-fifo f=UNIXSOCKET -find . INCREMENTAL -xdev -exec stat -c "%d %i %f %h %u %g %d %s %X %Y %Z %Z %o %b %Z %n" {} \;'
-            command_line = 'star -c -xdev -sparse -acl -link-dirs level=0 -wtardumps -no-fifo f=UNIXSOCKET -C FILESYSTEM .'
+            command_line = 'star -c -dump -no-fifo f=UNIXSOCKET -find . INCREMENTAL -xdev -exec stat -c "%d %i %f %h %u %g %d %s %X %Y %Z %Z %o %b %Z %n" {} \;'
+            #command_line = 'star -c -xdev -sparse -acl -link-dirs level=0 -wtardumps -no-fifo f=UNIXSOCKET -C FILESYSTEM .'
 
         
         command_line = re.sub('UNIXSOCKET', record.data['bu_fifo'], command_line)

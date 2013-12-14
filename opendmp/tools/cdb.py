@@ -13,17 +13,6 @@ from ctypes import *
 from fcntl import ioctl
 from os import errno
 
-
-SG_DXFER_NONE = -1
-SG_DXFER_TO_DEV = -2
-SG_DXFER_FROM_DEV = -3
-SG_DXFER_TO_FROM_DEV = -4
-SG_FLAG_DIRECT_IO = 1
-SG_FLAG_LUN_INHIBIT = 2
-SG_FLAG_NO_DXFER = 0x10000
-SENSE_SIZE = 0xFF
-SG_IO = 0x2285
-
 class SGIO(Structure):
     _fields_ = [
         ("interface_id", c_int), # [i] 'S' for SCSI generic (required)
@@ -62,6 +51,18 @@ class SGIO(Structure):
 
 
 def getcdb(record):
+    
+    SG_DXFER_NONE = -1
+    SG_DXFER_TO_DEV = -2
+    SG_DXFER_FROM_DEV = -3
+    SG_DXFER_TO_FROM_DEV = -4
+    SG_FLAG_DIRECT_IO = 1
+    SG_FLAG_LUN_INHIBIT = 2
+    SG_FLAG_NO_DXFER = 0x10000
+    SENSE_SIZE = 0xFF
+    SG_IO = 0x2285
+    
+    
     record.device.datain_len = record.b.datain_len
     buf = create_string_buffer(sizeof(SGIO))
     memset(buf, 0, sizeof(SGIO))
