@@ -15,7 +15,7 @@ class Config:
                         'RUNDIR': '/var/run/opendmp',
                         'PREFERRED_NDMP_VERSION' : 'v4',
                         'SUPPORTED_NDMP_VERSIONS': ['v4','v3'],
-                        'BUFSIZE': '10240',
+                        'BUFSIZE': '2048',
                         'DATA_PORT_RANGE': '10001-10020',
                         'DATA_TIMEOUT': '5',
                         'DUMPDATES': '/etc/dumpdates',
@@ -62,6 +62,12 @@ class Config:
         except (KeyError, ValueError):
             print('Invalid value given for PORT, using default 10000')
             self.cfg['PORT'] = '10000'
+            
+        try:
+            int(self.cfg['BUFSIZE'])
+        except (KeyError, ValueError):
+            print('Invalid value given for BUFSIZE, using default 2048')
+            self.cfg['BUFSIZE'] = '2048'
         
         if int(self.cfg['PORT']) < 1024 or int(self.cfg['PORT']) > 65535:
             print('Invalid value given for PORT, using default 10000')

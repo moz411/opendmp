@@ -43,7 +43,7 @@ class Data(threading.Thread):
     def backup(self):
         with open(self.record.data['bu_fifo'],'rb') as file:
             while not self.record.data['equit'].is_set():
-                data = file.read(2048)
+                data = file.read(int(cfg['BUFSIZE']))
                 with self.record.data['lock']:
                     self.record.data['stats']['current'] += self.record.data['fd'].send(data)
                 if not data: return
@@ -54,7 +54,7 @@ class Data(threading.Thread):
         with open(self.record.data['bu_fifo'],'wb') as file:
             nt.data_read().post(self.record)
             while not self.record.data['equit'].is_set():
-                data = self.record.data['fd'].recv(2048)
+                data = self.record.data['fd'].recv(int(cfg['BUFSIZE']))
                 with self.record.data['lock']:
                     self.record.data['stats']['current'] += file.write(data)
                 if not data: return

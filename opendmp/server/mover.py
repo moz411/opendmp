@@ -30,8 +30,8 @@ class Mover(threading.Thread):
             
         try:
             self.sock, self.addr = self.fd.accept()
-        except socket.error as e:
-            stdlog.error(repr(e))
+        except OSError as e:
+            stdlog.error(e)
             self.terminate()
             
         with self.record.mover['lock']:
@@ -43,24 +43,21 @@ class Mover(threading.Thread):
             self.recover()
                 
     def backup(self):
-        while self.record.mover['equit'] == False:
+        while not self.record.mover['equit'].is_set():
             try:
-                self.record.device.data = self.sock.recv(4096)
+                self.record.device.data = self.sock.recv(int(cfg['BUFSIZE']))
                 self.record.device.write(self.record)
                 with self.record.mover['lock']:
                     self.record.mover['bytes_moved'] += len(self.record.device.data)
                 if not self.record.device.data:
                     self.terminate()
-            except socket.error as e:
-                stdlog.error(repr(e))
-                self.terminate()
             except (OSError, IOError) as e:
-                stdlog.error('Mover write failed: ' + e.strerror)
+                stdlog.error('Mover write failed: ' + repr(e))
                 self.terminate()
     
     def recover(self):
         self.record.device.count = self.record.mover['record_size']
-        while self.record.mover['equit'] == False:
+        while not self.record.mover['equit'].is_set():
             try:
                 self.record.device.read(self.record)
                 with self.record.mover['lock']:
