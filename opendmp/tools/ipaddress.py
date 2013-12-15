@@ -2133,7 +2133,7 @@ def get_local_ip():
                 waiting = False
         return address[0]
     
-def get_next_data_conn():
+def get_next_data_conn(loopback=False):
     '''return a socket bound to the next port available in
     DATA_PORT_RANGE'''
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -2141,7 +2141,10 @@ def get_next_data_conn():
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     found = False
     try:
-        data_iface = cfg['DATA_IFACE']
+        if loopback:
+            data_iface = '127.0.0.1'
+        else:
+            data_iface = cfg['DATA_IFACE']
     except KeyError:
         data_iface = get_local_ip()
     first, last = cfg['DATA_PORT_RANGE'].split('-')

@@ -16,7 +16,10 @@ class Mover(threading.Thread):
     def run(self):
         stdlog.info('starting mover operation')
         try:
-            self.fd = ip.get_next_data_conn()
+            if(self.record.mover['addr_type'] == const.NDMP_ADDR_LOCAL):
+                self.fd = ip.get_next_data_conn(loopback=True)
+            else:
+                self.fd = ip.get_next_data_conn()
         except:
             self.record.error = const.NDMP_CONNECT_ERR
             stdlog.info('Cannot get IP')

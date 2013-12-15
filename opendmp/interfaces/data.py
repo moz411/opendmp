@@ -24,8 +24,21 @@ class connect():
             record.error = const.NDMP_ILLEGAL_STATE_ERR
             return
         elif(record.b.addr_type == const.NDMP_ADDR_LOCAL):
-            pass
+            record.data['addr_type'] = const.NDMP_ADDR_LOCAL
+            try:
+                peer = type.ndmp_tcp_addr
+                peer.ip_addr = record.mover['host']
+                peer.port = record.mover['port']
+                record.data['fd'] = ip.get_data_conn([peer])
+                record.data['host'], record.data['port'] = record.data['fd'].getsockname()
+                record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
+                stdlog.info('DATA> Connected to ' + repr((record.mover['host'],record.mover['port'])))
+            except Exception as e:
+                record.error = const.NDMP_DATA_HALT_CONNECT_ERROR
+                stdlog.error('DATA> Cannot connect to ' + 
+                             repr((record.mover['host'],record.mover['port'])) + ': ' + repr(e))
         elif(record.b.addr_type == const.NDMP_ADDR_IPC):
+            # TODO: implement NDMP_ADDR_IPC
             pass
         elif(record.b.addr_type == const.NDMP_ADDR_TCP):
             record.data['addr_type'] = const.NDMP_ADDR_TCP
@@ -59,8 +72,20 @@ class listen():
             record.error = const.NDMP_ILLEGAL_STATE_ERR
             return
         elif(record.b.addr_type == const.NDMP_ADDR_LOCAL):
-            pass
+            try:
+                record.data['addr_type'] = const.NDMP_ADDR_LOCAL
+                record.data['local_address'] = ip.get_next_data_conn()
+                record.data['host'], record.data['port'] = record.data['local_address'].getsockname()
+                record.data['state'] = const.NDMP_DATA_STATE_LISTEN
+                # Launch the Wait Connection thread
+                listen_thread = Wait_Connection(record)
+                listen_thread.start()
+                threads.append(listen_thread)
+            except OSError as e:
+                stdlog.error(e)
+                record.error = const.NDMP_ILLEGAL_ARGS_ERR
         elif(record.b.addr_type == const.NDMP_ADDR_IPC):
+            # TODO: implement NDMP_ADDR_IPC
             pass
         elif(record.b.addr_type == const.NDMP_ADDR_TCP):
             try:
@@ -83,8 +108,11 @@ class listen():
                 record.error = const.NDMP_ILLEGAL_STATE_ERR
                 return
             elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
-                pass
+                addr = ip.IPv4Address(record.data['host'])
+                record.b.connect_addr = type.ndmp_addr_v4()
+                record.b.connect_addr.addr_type = const.NDMP_ADDR_LOCAL
             elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
+                # TODO: implement NDMP_ADDR_IPC
                 pass
             elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
                 addr = ip.IPv4Address(record.data['host'])
@@ -101,8 +129,11 @@ class listen():
                 record.error = const.NDMP_ILLEGAL_STATE_ERR
                 return
             elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
-                pass
+                addr = ip.IPv4Address(record.data['host'])
+                record.b.connect_addr = type.ndmp_addr_v3()
+                record.b.connect_addr.addr_type = const.NDMP_ADDR_LOCAL
             elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
+                # TODO: implement NDMP_ADDR_IPC
                 pass
             elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
                 addr = ip.IPv4Address(record.data['host'])

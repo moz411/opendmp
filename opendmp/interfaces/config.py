@@ -40,7 +40,8 @@ class get_connection_type():
     '''This request returns a list of the data connection types supported by the NDMP Server.'''
       
     def reply_v4(self, record):
-        record.b.addr_types = [const.NDMP_ADDR_LOCAL, const.NDMP_ADDR_TCP, const.NDMP_ADDR_IPC]
+        #record.b.addr_types = [const.NDMP_ADDR_LOCAL, const.NDMP_ADDR_TCP, const.NDMP_ADDR_IPC]
+        record.b.addr_types = [const.NDMP_ADDR_LOCAL, const.NDMP_ADDR_TCP]
 
     reply_v3 = reply_v4
 

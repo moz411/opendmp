@@ -13,9 +13,7 @@ import traceback, queue
 from io import BufferedReader
 from tools import utils as ut, ipaddress as ip
 from server.mover import Mover
-from xdr import ndmp_const as const
-from xdr.ndmp_type import (ndmp_tcp_addr_v4, ndmp_ipc_addr, 
-                           ndmp_addr_v4, ndmp_tcp_addr, ndmp_addr_v3)
+from xdr import ndmp_const as const, ndmp_type as type
 
 
 class set_record_size():
@@ -65,14 +63,39 @@ class connect():
        data connection to a Data Server or peer mover.'''
     
     def request_v4(self, record):
+        record.mover['mode'] = record.b.mode
+        record.mover['addr'] = record.b.addr
         if(record.mover['state'] not in [const.NDMP_MOVER_STATE_IDLE]):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
+            retunr
         elif(record.mover['record_size'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
-        else:
-            record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
-            record.mover['mode'] = record.b.mode
-            record.mover['addr'] = record.b.addr
+            return
+        elif(record.b.addr.addr_type == const.NDMP_ADDR_LOCAL):
+            record.data['addr_type'] = const.NDMP_ADDR_LOCAL
+            try:
+                record.mover['fd'] = ip.get_data_conn((record.data['host'],record.data['port']))
+                record.mover['host'], record.mover['port'] = record.mover['fd'].getsockname()
+                record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
+                stdlog.info('MOVER> Connected to ' + repr((record.data['host'],record.data['port'])))
+            except Exception as e:
+                record.error = const.NDMP_MOVER_HALT_CONNECT_ERROR
+                stdlog.error('MOVER> Cannot connect to ' + 
+                             repr((record.data['host'],record.data['port'])) + ': ' + repr(e))
+        elif(record.b.addr.addr_type == const.NDMP_ADDR_IPC):
+            # TODO: implement NDMP_ADDR_IPC
+            pass
+        elif(record.b.addr.addr_type == const.NDMP_ADDR_TCP):
+            record.data['addr_type'] = const.NDMP_ADDR_TCP
+            try:
+                record.mover['fd'] = ip.get_data_conn(record.b.addr.tcp_addr)
+                record.mover['host'], record.mover['port'] = record.mover['fd'].getsockname()
+                record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
+                stdlog.info('MOVER> Connected to ' + repr(record.b.addr.tcp_addr))
+            except Exception as e:
+                record.error = const.NDMP_MOVER_HALT_CONNECT_ERROR
+                stdlog.error('MOVER> Cannot connect to ' + repr(record.b.addr.tcp_addr) + ': ' + repr(e))
+            
             
     def reply_v4(self, record):
         pass
@@ -91,8 +114,16 @@ class listen():
         if(record.mover['state'] != const.NDMP_MOVER_STATE_IDLE):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         elif(record.b.addr_type == const.NDMP_ADDR_LOCAL):
-            pass
+            record.mover['addr_type'] = const.NDMP_ADDR_LOCAL
+            record.mover['mode'] = record.b.mode
+            record.mover['qinfos'] = queue.Queue()
+            t = Mover(record)
+            t.start()
+            record.mover['qinfos'].join()
+            record.mover['host'] = ip.IPv4Address(record.mover['qinfos'].get())
+            record.mover['port'] = record.mover['qinfos'].get()
         elif(record.b.addr_type == const.NDMP_ADDR_IPC):
+            # TODO: implement NDMP_ADDR_IPC
             pass
         elif(record.b.addr_type == const.NDMP_ADDR_TCP):
             record.mover['addr_type'] = const.NDMP_ADDR_TCP
@@ -111,14 +142,16 @@ class listen():
         if(state != const.NDMP_MOVER_STATE_LISTEN):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         elif(record.mover['addr_type'] == const.NDMP_ADDR_LOCAL):
-            pass
+            record.b.connect_addr = type.ndmp_addr_v4
+            record.b.connect_addr.addr_type = const.NDMP_ADDR_LOCAL
         elif(record.mover['addr_type'] == const.NDMP_ADDR_IPC):
+            # TODO: implement NDMP_ADDR_IPC
             pass
         elif(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
-            record.b.connect_addr = ndmp_addr_v4
+            record.b.connect_addr = type.ndmp_addr_v4
             record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
             record.b.connect_addr.tcp_addr = []
-            tcp_addr = ndmp_tcp_addr_v4(record.mover['host'],record.mover['port'],[])
+            tcp_addr = type.type.ndmp_tcp_addr_v4(record.mover['host'],record.mover['port'],[])
             record.b.connect_addr.tcp_addr.append(tcp_addr)
             record.mover['peer'] = tcp_addr
             
@@ -128,16 +161,21 @@ class listen():
         if(state != const.NDMP_MOVER_STATE_LISTEN):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         elif(record.mover['addr_type'] == const.NDMP_ADDR_LOCAL):
-            pass
+            host = record.mover['qinfos'].get()
+            port = record.mover['qinfos'].get()
+            addr = ip.IPv4Address(host)
+            record.b.data_connection_addr = type.ndmp_addr_v3
+            record.b.data_connection_addr.addr_type = const.NDMP_ADDR_LOCAL
         elif(record.mover['addr_type'] == const.NDMP_ADDR_IPC):
+            # TODO: implement NDMP_ADDR_IPC
             pass
         elif(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
             host = record.mover['qinfos'].get()
             port = record.mover['qinfos'].get()
             addr = ip.IPv4Address(host)
-            record.b.data_connection_addr = ndmp_addr_v3
+            record.b.data_connection_addr = type.ndmp_addr_v3
             record.b.data_connection_addr.addr_type = const.NDMP_ADDR_TCP
-            record.b.data_connection_addr.tcp_addr = ndmp_tcp_addr
+            record.b.data_connection_addr.tcp_addr = type.ndmp_tcp_addr
             record.b.data_connection_addr.tcp_addr.ip_addr = addr._ip_int_from_string(host)
             record.b.data_connection_addr.tcp_addr.port = port
 
@@ -192,9 +230,11 @@ class get_state():
         record.b.window_offset =  ut.long_long_to_quad(record.mover['window_offset'])
         record.b.window_length =  ut.long_long_to_quad(record.mover['window_length'])
         if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
-            record.b.data_connection_addr = ndmp_addr_v4(const.NDMP_ADDR_TCP,[record.mover['peer']])
+            record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_TCP,[record.mover['peer']])
         elif(record.mover['addr_type'] == const.NDMP_ADDR_IPC):
-            record.b.data_connection_addr = ndmp_ipc_addr(b'')
+            record.b.data_connection_addr = type.ndmp_ipc_addr(b'')
+        else:
+            record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
         
         stdlog.info('MOVER> Bytes moved: ' + repr(bytes_moved))
         #stdlog.info('MOVER> Bytes left to read: ' + repr(record.mover['bytes_left_to_read']))
