@@ -50,7 +50,7 @@ class set_window():
         else:
             with record.mover['lock']:
                 record.mover['window_offset'] = ut.quad_to_long_long(record.b.offset)
-                record.mover['window_len'] = ut.quad_to_long_long(record.b.length)
+                record.mover['window_length'] = ut.quad_to_long_long(record.b.length)
 
     def reply_v4(self, record):
         pass
