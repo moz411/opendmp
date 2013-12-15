@@ -48,15 +48,20 @@ class Bu():
         # Is it an incremental backup?
         try:
             record.data['env']['LEVEL'] = int(record.data['env']['LEVEL'])
-        except KeyError:
+        except (KeyError, ValueError):
+            stdlog.error('Cannot decode level ' + repr(record.data['env']['LEVEL']))
             record.data['env']['LEVEL'] = 0
+        
+        if (record.data['env']['LEVEL'] == 0):
             command_line = re.sub('INCREMENTAL', '', command_line)
-        else: 
+        else:
             record.data['dumpdates'] = ut.read_dumpdates('.'.join([cfg['DUMPDATES'],record.data['bu_type']]))
             tstamp = ut.compute_incremental(record.data['dumpdates'], record.data['env']['FILESYSTEM'],
                                             record.data['env']['LEVEL'])
             record.data['stampfile'] = ut.mktstampfile('.'.join([record.data['bu_fifo'],'tstamp']), tstamp)
             command_line = re.sub('INCREMENTAL', '-newer ' + record.data['stampfile'], command_line)
+        
+        stdlog.info('Backup level ' + repr(record.data['env']['LEVEL']))
         return (command_line)
     
     def recover(self, record):

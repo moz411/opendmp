@@ -171,10 +171,10 @@ class Record():
         """
         message = const.ndmp_message[self.h.message].lower()
         # Exceptions for names that conflict with reserved keywords
-        if(self.h.message in [const.NDMP_MOVER_CONTINUE]):
-            message = ('spec_' + const.ndmp_message[self.h.message].lower())
         interface = 'interfaces.' + str(message.split('_',2)[1])
         func = str(message.split('_',2)[2])
+        if(self.h.message in [const.NDMP_MOVER_CONTINUE]):
+            func = ('spec_' + func)
 
         try: 
             exec('from ' + interface + ' import ' + func)
@@ -194,7 +194,7 @@ class Record():
                 return
             
             try:
-                # run "reply" function
+                #run "reply" function
                 exec(func + '().reply_' + self.protocol_version + '(self)')
             except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
