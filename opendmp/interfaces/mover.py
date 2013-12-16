@@ -197,7 +197,7 @@ class read():
             try:
                 record.mover['buf'] = BufferedReader(record.mover['fd'], record.mover['window_length'])
                 record.mover['buf'].read(record.mover['window_length'])
-                record.mover['bytes_moved'] += record.mover['window_length']
+                record.mover['bytes_moved'][0] += record.mover['window_length']
                 record.mover['bytes_left_to_read'] -= record.mover['window_length']
             except:
                 record.error = const.NDMP_UNDEFINED_ERR
@@ -216,9 +216,9 @@ class get_state():
        variable set.'''
     
     def reply_v4(self, record):
+        bytes_moved = record.mover['bytes_moved'][0]
         with record.mover['lock']:
             record.b.state = record.mover['state']
-            bytes_moved = record.mover['bytes_moved']
         record.b.mode =  record.mover['mode']
         record.b.pause_reason =  record.mover['pause_reason']
         record.b.halt_reason =  record.mover['halt_reason']
@@ -293,7 +293,7 @@ class stop():
                 record.mover['halt_reason'] = const.NDMP_MOVER_HALT_NA
                 record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_NA
                 record.mover['record_num'] = 0
-                record.mover['bytes_moved'] = 0 
+                record.mover['bytes_moved'] = [0] 
                 record.mover['seek_position'] = 0
                 record.mover['bytes_left_to_read'] = 0
                 record.mover['window_length'] = 0 
@@ -320,7 +320,7 @@ class abort():
             record.mover['halt_reason'] = const.NDMP_MOVER_HALT_ABORTED
             record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_NA
             record.mover['record_num'] = 0
-            record.mover['bytes_moved'] = 0 
+            record.mover['bytes_moved'] = [0] 
             record.mover['seek_position'] = 0
             record.mover['bytes_left_to_read'] = 0
             record.mover['window_length'] = 0 

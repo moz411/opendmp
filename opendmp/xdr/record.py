@@ -56,7 +56,7 @@ class Record():
                 'dumpdates': {},
                 'stampfile': None,
                 'stats':  {'total': 0,
-                           'current': 0}}
+                           'current': [0]}}
         
         self.mover = {'mode': const.NDMP_MOVER_MODE_NOACTION,
                  'state': const.NDMP_MOVER_STATE_IDLE,
@@ -72,7 +72,7 @@ class Record():
                  'econt': threading.Event(),
                  'record_size': 0,
                  'record_num': 0,
-                 'bytes_moved': 0,
+                 'bytes_moved': [0],
                  'seek_position': 0,
                  'bytes_left_to_read': 0,
                  'window_length': 0, 

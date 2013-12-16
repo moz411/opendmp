@@ -44,8 +44,8 @@ class Data(threading.Thread):
         with open(self.record.data['bu_fifo'],'rb') as file:
             while not self.record.data['equit'].is_set():
                 data = file.read(int(cfg['BUFSIZE']))
-                with self.record.data['lock']:
-                    self.record.data['stats']['current'] += self.record.data['fd'].send(data)
+                #with self.record.data['lock']:
+                self.record.data['stats']['current'][0] += self.record.data['fd'].send(data)
                 if not data: return
 
     def recover(self):
@@ -55,8 +55,8 @@ class Data(threading.Thread):
             nt.data_read().post(self.record)
             while not self.record.data['equit'].is_set():
                 data = self.record.data['fd'].recv(int(cfg['BUFSIZE']))
-                with self.record.data['lock']:
-                    self.record.data['stats']['current'] += file.write(data)
+                #with self.record.data['lock']:
+                self.record.data['stats']['current'][0] += file.write(data)
                 if not data: return
             
     def terminate(self):

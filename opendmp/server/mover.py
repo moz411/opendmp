@@ -50,8 +50,8 @@ class Mover(threading.Thread):
             try:
                 self.record.device.data = self.sock.recv(int(cfg['BUFSIZE']))
                 self.record.device.write(self.record)
-                with self.record.mover['lock']:
-                    self.record.mover['bytes_moved'] += len(self.record.device.data)
+                #with self.record.mover['lock']:
+                self.record.mover['bytes_moved'][0] += len(self.record.device.data)
                 if not self.record.device.data:
                     self.terminate()
             except (OSError, IOError) as e:
@@ -82,8 +82,8 @@ class Mover(threading.Thread):
         while not self.record.mover['equit'].is_set():
             try:
                 self.record.device.read(self.record)
-                with self.record.mover['lock']:
-                    self.record.mover['bytes_moved'] += self.sock.send(self.record.device.data)
+                #with self.record.mover['lock']:
+                self.record.mover['bytes_moved'][0] += self.sock.send(self.record.device.data)
                 if not self.record.device.data:
                     self.terminate()
             except (OSError, IOError) as e:
