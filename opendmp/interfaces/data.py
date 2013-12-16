@@ -403,13 +403,14 @@ class get_state():
        set.'''
     
     def reply_v4(self, record):
-        sent = record.data['stats']['current']
-        record.b.state = record.data['state']
-        remain = record.data['stats']['total'] - sent
-        record.b.unsupported = (const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID |
-                                const.NDMP_DATA_STATE_EST_BYTES_REMAIN_INVALID)
-        record.b.operation = record.data['operation']
-        record.b.halt_reason = record.data['halt_reason']
+        with record.data['lock']:
+            sent = record.data['stats']['current']
+            record.b.state = record.data['state']
+            remain = record.data['stats']['total'] - sent
+            record.b.unsupported = (const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID |
+                                    const.NDMP_DATA_STATE_EST_BYTES_REMAIN_INVALID)
+            record.b.operation = record.data['operation']
+            record.b.halt_reason = record.data['halt_reason']
         record.b.bytes_processed = ut.long_long_to_quad(sent)
         # record.b.est_bytes_remain = ut.long_long_to_quad(remain)
         record.b.est_bytes_remain = ut.long_long_to_quad(0)
@@ -478,6 +479,7 @@ class abort():
        if present, and transition the Data Server to the HALTED state.'''
     
     def reply_v4(self, record):
+        print(record.data['lock'])
         with record.data['lock']:
             state = record.data['state']
         if(state == const.NDMP_DATA_STATE_IDLE):

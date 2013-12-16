@@ -1,7 +1,7 @@
 set -x
 mtx -f /dev/sg10 load 1 0
 
-./ndmjob.`./distro.sh` -d6 -c -D localhost/4m,ndmp,ndmp -F /home/moz/eclipse -T localhost/4m,ndmp,ndmp -f /dev/nst0 -I centos.idx
+./ndmjob.`./distro.sh` -d6 -c -D localhost/4m,ndmp,ndmp -F /mnt/repository/Centera\ Console -T localhost/4m,ndmp,ndmp -f /dev/nst0 -I centos.idx
 #./ndmjob.`./distro.sh` -d6 -c -D localhost/4m,ndmp,ndmp -F /boot -T ddve1/4m,ndmp,ndmp -f /dev/dd_st_c0t1l0 -I centos.idx
 
 #./ndmjob.`./distro.sh` -v -c -D opendmp/4m,ndmp,ndmp -F /data01/d01s01 -T localhost/4m,ndmp,ndmp -f /dev/nst0 \

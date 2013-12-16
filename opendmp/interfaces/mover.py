@@ -72,7 +72,7 @@ class connect():
             record.error = const.NDMP_PRECONDITION_ERR
             return
         elif(record.b.addr.addr_type == const.NDMP_ADDR_LOCAL):
-            record.data['addr_type'] = const.NDMP_ADDR_LOCAL
+            record.mover['addr_type'] = const.NDMP_ADDR_LOCAL
             try:
                 record.mover['fd'] = ip.get_data_conn((record.data['host'],record.data['port']))
                 record.mover['host'], record.mover['port'] = record.mover['fd'].getsockname()
@@ -86,7 +86,7 @@ class connect():
             # TODO: implement NDMP_ADDR_IPC
             pass
         elif(record.b.addr.addr_type == const.NDMP_ADDR_TCP):
-            record.data['addr_type'] = const.NDMP_ADDR_TCP
+            record.mover['addr_type'] = const.NDMP_ADDR_TCP
             try:
                 record.mover['fd'] = ip.get_data_conn(record.b.addr.tcp_addr)
                 record.mover['host'], record.mover['port'] = record.mover['fd'].getsockname()
@@ -151,7 +151,7 @@ class listen():
             record.b.connect_addr = type.ndmp_addr_v4
             record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
             record.b.connect_addr.tcp_addr = []
-            tcp_addr = type.type.ndmp_tcp_addr_v4(record.mover['host'],record.mover['port'],[])
+            tcp_addr = type.ndmp_tcp_addr_v4(record.mover['host'],record.mover['port'],[])
             record.b.connect_addr.tcp_addr.append(tcp_addr)
             record.mover['peer'] = tcp_addr
             

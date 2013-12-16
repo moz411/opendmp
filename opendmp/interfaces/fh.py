@@ -76,6 +76,7 @@ class add_file():
                         body.files.append(type.ndmp_file([file_name], [file_stat], node, fh_info))
                 except:
                     traceback.print_exc()
+        print(body.files)
         p.pack_ndmp_fh_add_file_request_v4(body)
         stdlog.debug(body)
         record.queue.put(p.get_buffer())

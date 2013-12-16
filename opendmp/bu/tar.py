@@ -49,7 +49,7 @@ class Bu():
         try:
             record.data['env']['LEVEL'] = int(record.data['env']['LEVEL'])
         except (KeyError, ValueError):
-            stdlog.error('Cannot decode level ' + repr(record.data['env']['LEVEL']))
+            stdlog.error('Cannot decode level, using 0')
             record.data['env']['LEVEL'] = 0
         
         if (record.data['env']['LEVEL'] == 0):
