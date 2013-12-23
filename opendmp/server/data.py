@@ -7,6 +7,7 @@ from xdr import ndmp_const as const
 from interfaces import notify as nt
 from tools import utils as ut
 from subprocess import TimeoutExpired
+from sendfile import sendfile
 
 class Data(threading.Thread):
     
@@ -43,10 +44,16 @@ class Data(threading.Thread):
     def backup(self):
         with open(self.record.data['bu_fifo'],'rb') as file:
             while not self.record.data['equit'].is_set():
-                data = file.read(int(cfg['BUFSIZE']))
+                sent = sendfile(self.record.data['fd'].fileno(), 
+                                file.fileno(), 
+                                self.record.data['stats']['current'][0], int(cfg['BUFSIZE']))
+                if sent == 0: return
+                self.record.data['stats']['current'][0] += sent
+                #data = file.read(int(cfg['BUFSIZE']))
                 #with self.record.data['lock']:
-                self.record.data['stats']['current'][0] += self.record.data['fd'].send(data)
-                if not data: return
+                #self.record.data['stats']['current'][0] += self.record.data['fd'].send(data)
+                #if not data: return
+                #if data == None: return
 
     def recover(self):
         # For NetWorker, does not seems to close Tape server socket
@@ -65,7 +72,7 @@ class Data(threading.Thread):
         except TimeoutExpired:
             stdlog.error('killing bu process')
             self.record.data['process'].kill()
-            
+            self.record.data['process'].wait()
         try:
             self.record.data['process'].poll()
             if self.errmsg:

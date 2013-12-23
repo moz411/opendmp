@@ -462,15 +462,17 @@ class stop():
         record.fh['equit'].set() # Will close the fh thread
         record.data['equit'].set() # Will close the data thread
         
-        with record.data['lock']:
-            state = record.data['state']
-        if(state != const.NDMP_DATA_STATE_HALTED):
+        if(record.data['state'] != const.NDMP_DATA_STATE_HALTED):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         else:
-            with record.data['lock']:
+            try:
+                record.data['fd'].close()
                 record.data['halt_reason'] = const.NDMP_DATA_HALT_NA
                 record.data['state'] = const.NDMP_DATA_STATE_IDLE
-            record.data['operation'] = const.NDMP_DATA_OP_NOACTION
+                record.data['operation'] = const.NDMP_DATA_OP_NOACTION
+            except OSError as e:
+                stdlog.error(e)
+                
     reply_v3 = reply_v4
 
 class abort():
@@ -479,11 +481,14 @@ class abort():
        if present, and transition the Data Server to the HALTED state.'''
     
     def reply_v4(self, record):
-        with record.data['lock']:
-            state = record.data['state']
-        if(state == const.NDMP_DATA_STATE_IDLE):
+        if(record.data['state'] == const.NDMP_DATA_STATE_IDLE):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         else:
+            try:
+                with open(record.data['bu_fifo'], 'wb') as file:
+                    file.write(b'None') # Will close the data thread
+            except OSError as e:
+                stdlog.error(e)    
             try:
                 record.data['process'].poll
                 if (record.data['process'].returncode == None):

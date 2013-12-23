@@ -1,44 +1,14 @@
 ##ndmjob -I
 ##ndmjob -J
 CM 01 +0/0
-DHf /Console UNIX fd m1411 u0 g0 tm1365770262 @0
-DHf /Console/Centera_Console_2.6 UNIX fd m1411 u0 g0 tm1365770264 @0
-DHf /Console/Centera_Console_2.6.iso UNIX f- m1232 u0 g0 s208742400 tm1364337562 @0
-DHf /Console/Centera_Console_2.6/AUTORUN.INF UNIX f- m1232 u0 g0 s68 tm1351103332 @0
-DHf /Console/Centera_Console_2.6/CenteraConsoleInstaller.exe UNIX f- m1232 u0 g0 s151662119 tm1351104224 @0
-DHf /Console/Centera_Console_2.6/browsercall.exe UNIX f- m1232 u0 g0 s60416 tm1351103332 @0
-DHf /Console/Centera_Console_2.6/doc UNIX fd m1411 u0 g0 tm1351104235 @0
-DHf /Console/Centera_Console_2.6/doc/EMC%20Centera%20Console%202.6%20Release%20Notes.pdf UNIX f- m1232 u0 g0 s107259 tm1351104235 @0
-DHf /Console/Centera_Console_2.6/doc/EMC%20Centera%20Console%202.6%20Setup%20Guide.pdf UNIX f- m1232 u0 g0 s3308184 tm1351104235 @0
-DHf /centera UNIX fd m1411 u0 g0 tm1377005360 @0
-DHf /centera/.DS_Store UNIX f- m1232 u0 g0 s6148 tm1385546391 @0
-DHf /centera/._add%20Cube.doc UNIX f- m1232 u0 g0 s4096 tm1377005341 @0
-DHf /centera/C2C UNIX fd m1411 u0 g0 tm1365770180 @0
-DHf /centera/C2C/docu6181_Centera-to-Centera-(C2C)-Migration-Tool-User-Guide.pdf UNIX f- m1232 u0 g0 s2841212 tm1365158046 @0
-DHf /centera/Compte UNIX fd m1411 u0 g0 tm1377005395 @0
-DHf /centera/Compte/._password.doc UNIX f- m1232 u0 g0 s4096 tm1377005395 @0
-DHf /centera/Compte/CUA_pwd.txt UNIX f- m1232 u0 g0 s364 tm1353086084 @0
-DHf /centera/Compte/erase_and_pwd.txt UNIX f- m1232 u0 g0 s1051 tm1355907781 @0
-DHf /centera/Compte/password.doc UNIX f- m1232 u0 g0 s79360 tm1352204328 @0
-DHf /centera/Compte/~$ssword.doc UNIX f- m1232 u0 g0 s162 tm1359196212 @0
-DHf /centera/Dernier%20access%20au%20centera%20.txt UNIX f- m1232 u0 g0 s96 tm1352118868 @0
-DHf /centera/GS UNIX fd m1411 u0 g0 tm1365770181 @0
-DHf /centera/GS/4.2.2 UNIX fd m1411 u0 g0 tm1365770226 @0
-DHf /centera/GS/4.2.2/GlobalServices_4_2_2.exe UNIX f- m1232 u0 g0 s154961711 tm1358172450 @0
-DHf /centera/MEMO%20CENTERA%20.docx UNIX f- m1232 u0 g0 s13198 tm1362566109 @0
-DHf /centera/Migration UNIX fd m1411 u0 g0 tm1365770229 @0
-DHf /centera/Migration/C2C.pptx UNIX f- m1232 u0 g0 s351816 tm1328828377 @0
-DHf /centera/Migration/CDE.pptx UNIX f- m1232 u0 g0 s108418 tm1328830493 @0
-DHf /centera/Migration/CICM.pptx UNIX f- m1232 u0 g0 s333518 tm1360745816 @0
-DHf /centera/Migration/Centera_Proc%C3%A9dure_migration_Centera_V1R0.odt UNIX f- m1232 u0 g0 s253589 tm1331545580 @0
-DHf /centera/Migration/Migration%20replication.pptx UNIX f- m1232 u0 g0 s366952 tm1328493632 @0
-DHf /centera/add%20Cube.doc UNIX f- m1232 u0 g0 s1896448 tm1354051580 @0
-DHf /centera/console UNIX fd m1411 u0 g0 tm1365770180 @0
-DHf /centera/console/Console_2.6_Setup_Guide.pdf UNIX f- m1232 u0 g0 s3308184 tm1365159020 @0
-DHf /centera/console/docu39456_Centera-Console-2.5-Setup-Guide.pdf UNIX f- m1232 u0 g0 s3300300 tm1364334535 @0
-DHf /centera/dhsm.txt UNIX f- m1232 u0 g0 s140 tm1352977654 @0
-DHf /centera/docu32614_White-Paper_-EMC-Centera-Compliance-Models.pdf UNIX f- m1232 u0 g0 s458685 tm1365157859 @0
-DHf /centera/matrix UNIX fd m1411 u0 g0 tm1365770229 @0
-DHf /centera/matrix/docu32295_Centera-CentraStar-and-SDK-Release-and-Interoperability-Matrix.pdf UNIX f- m1232 u0 g0 s468371 tm1358166641 @0
-DHf /centera/matrix/docu44410_Centera-4.2.2-Quick-Start-Guide.pdf UNIX f- m1232 u0 g0 s786096 tm1358166765 @0
-DHf /centera/~$d%20Cube.doc UNIX f- m1232 u0 g0 s162 tm1362474898 @0
+DE 'FILES'='/usr'
+DE 'FILESYSTEM'='/usr'
+DE 'HIST'='y'
+DE 'LEVEL'=0
+DE 'PATHNAME_SEPARATOR'='/'
+DE 'TYPE'='tar'
+DE 'USER'='ndmp'
+DHf /bin UNIX fd m1053 u0 g0 tm1387505858 @0
+DHf /bin/ldb3edit UNIX f- m1363 u0 g0 s1689672 tm1334093133 @0
+DHf /bin/tzselect UNIX f- m1363 u0 g0 s7131 tm1377636833 @0
+DHf /bin/xxd UNIX f- m1363 u0 g0 s17592 tm1308991420 @0
