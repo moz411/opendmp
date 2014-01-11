@@ -7,7 +7,7 @@ from xdr import ndmp_const as const
 from interfaces import notify as nt
 from tools import utils as ut
 from subprocess import TimeoutExpired
-from sendfile import sendfile
+
 
 class Data(threading.Thread):
     
@@ -42,19 +42,25 @@ class Data(threading.Thread):
             sys.exit()
 
     def backup(self):
+        try:
+            from sendfile import sendfile
+            #imported = True
+            imported = False
+        except ImportError:
+            imported = False    
         with open(self.record.data['bu_fifo'],'rb') as file:
             while not self.record.data['equit'].is_set():
-                sent = sendfile(self.record.data['fd'].fileno(), 
+                if imported:
+                    sent = sendfile(self.record.data['fd'].fileno(), 
                                 file.fileno(), 
                                 self.record.data['stats']['current'][0], int(cfg['BUFSIZE']))
-                if sent == 0: return
-                self.record.data['stats']['current'][0] += sent
-                #data = file.read(int(cfg['BUFSIZE']))
-                #with self.record.data['lock']:
-                #self.record.data['stats']['current'][0] += self.record.data['fd'].send(data)
-                #if not data: return
-                #if data == None: return
-
+                    if sent == 0: return
+                    self.record.data['stats']['current'][0] += sent
+                else:
+                    data = file.read(int(cfg['BUFSIZE']))
+                    self.record.data['stats']['current'][0] += self.record.data['fd'].send(data)
+                    if not data: return
+                    
     def recover(self):
         # For NetWorker, does not seems to close Tape server socket
         self.record.data['fd'].settimeout(3)

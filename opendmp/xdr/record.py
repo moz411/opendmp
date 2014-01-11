@@ -1,4 +1,4 @@
-import struct, time, random, hashlib, traceback, threading
+import struct, time, random, hashlib, traceback, queue
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const, ndmp_type as type
@@ -12,6 +12,7 @@ class Record():
     that is shared in the program'''
     
     def __init__(self):
+        self.queue = queue.Queue()
         self.challenge = random.randint(0, 2**64).to_bytes(64, 'big')
         self.h = type.ndmp_header()
         self.b = None
@@ -44,9 +45,6 @@ class Record():
                 'log': None,
                 'error': [],
                 'process': None,
-                'lock': threading.RLock(),
-                'estart': threading.Event(),
-                'equit': threading.Event(),
                 'retcode': 255,
                 'filesystem': None,
                 'offset': 0,
@@ -66,10 +64,6 @@ class Record():
                  'peer': None,
                  'halt_reason': const.NDMP_MOVER_HALT_NA,
                  'pause_reason': const.NDMP_MOVER_PAUSE_NA,
-                 'lock': threading.RLock(),
-                 'estart': threading.Event(),
-                 'equit': threading.Event(),
-                 'econt': threading.Event(),
                  'record_size': 0,
                  'record_num': 0,
                  'bytes_moved': [0],
@@ -80,10 +74,7 @@ class Record():
         
         self.fh = {'files': [],
                   'history': None,
-                  'max_lines': 1000,
-                  'lock': threading.RLock(),
-                  'barrier': threading.Barrier(2),
-                  'equit': threading.Event()}
+                  'max_lines': 1000}
         
     def __repr__(self):
         out = []
@@ -158,8 +149,8 @@ class Record():
         stdlog.debug('\t' + repr(self.b))
         stdlog.debug('')
         
-        # return the encoded answer
-        return self.p.get_buffer()
+        # add the encoded answer to the message queue
+        self.queue.put(self.p.get_buffer())
         
         
     def body(self):

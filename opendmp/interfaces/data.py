@@ -238,6 +238,7 @@ class start_backup():
         fh_thread = Fh(record)
         fh_thread.start()
         threads.append(fh_thread)
+        record.fh_thread = fh_thread
         
         # Launch the backup thread
         data_thread = Data(record)
@@ -466,7 +467,6 @@ class stop():
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         else:
             try:
-                record.data['fd'].close()
                 record.data['halt_reason'] = const.NDMP_DATA_HALT_NA
                 record.data['state'] = const.NDMP_DATA_STATE_IDLE
                 record.data['operation'] = const.NDMP_DATA_OP_NOACTION
@@ -483,22 +483,18 @@ class abort():
     def reply_v4(self, record):
         if(record.data['state'] == const.NDMP_DATA_STATE_IDLE):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
-        else:
+        else: 
             try:
-                with open(record.data['bu_fifo'], 'wb') as file:
-                    file.write(b'None') # Will close the data thread
-            except OSError as e:
-                stdlog.error(e)    
-            try:
-                record.data['process'].poll
-                if (record.data['process'].returncode == None):
-                    record.data['process'].terminate()
+                record.data['process'].kill()
+                record.data['process'].wait()
             except OSError as e:
                 stdlog.error('Cannot stop process ' + repr(record.data['process'].pid) + ':' + e.strerror)
             except AttributeError:
                 stdlog.error('Process already stopped')
             record.fh['equit'].set() # Will close the fh thread
+            stdlog.info('aborting fh thread')
             record.data['equit'].set() # Will close the data thread
+            stdlog.info('aborting data thread')
             
             record.data['halt_reason'] = const.NDMP_DATA_HALT_ABORTED
             record.data['state'] = const.NDMP_DATA_STATE_HALTED

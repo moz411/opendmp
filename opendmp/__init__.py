@@ -33,11 +33,13 @@ from tools.log import Log
 from tools.config import Config
 from tools.daemon import Daemon
 from server.server import NDMPServer
+import asyncore
 
 def start_server():
+    stdlog.info('Starting NDMP server')
     server = NDMPServer(cfg['HOST'], int(cfg['PORT']))
     try:
-        server.start()
+        asyncore.loop()
     except:
         stdlog.debug('*'*60)
         stdlog.debug(traceback.format_exc())

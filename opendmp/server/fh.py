@@ -22,13 +22,7 @@ class Fh(threading.Thread):
                     (read, write, error) = select.select([file.fileno()], [], [])
                     if read:
                         line = file.readline()
-                        if line:
-                            with self.record.fh['lock']:
-                                self.record.fh['files'].append(line.strip())
-                        else:
-                            with self.record.data['lock']:
-                                if self.record.data['state'] == const.NDMP_DATA_STATE_HALTED:
-                                    break
+                        if line: self.record.fh['files'].append(line.strip())
                     if len(self.record.fh['files']) >= self.record.fh['max_lines']:
                         fh.add_file().post(self.record)
                     if self.record.fh['equit'].is_set():
@@ -43,7 +37,5 @@ class Fh(threading.Thread):
         except OSError as e:
             stdlog.error(e)
         finally:
-            self.record.fh['barrier'].wait() # Will wake up data thread
             stdlog.info('File History operation finished')
             sys.exit()
-        
