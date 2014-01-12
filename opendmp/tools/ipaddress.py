@@ -11,11 +11,10 @@ and networks.
 __version__ = '1.0'
 
 
-import select, socket, socketserver, threading, traceback
+import select, socket, threading
 from queue import Queue, Empty
 from tools.config import Config; cfg = Config.cfg; c = Config
 from tools.log import Log; stdlog = Log.stdlog
-from xdr import ndmp_const as const
 from tools import utils as ut
 
 IPV4LENGTH = 32

@@ -8,8 +8,7 @@ backups and recoveries.
 '''
 
 from tools.log import Log; stdlog = Log.stdlog
-from tools.config import Config; cfg = Config.cfg; c = Config 
-import xdr.ndmp_const as const
+from tools.config import Config; cfg = Config.cfg; c = Config
 from tools import utils as ut
 from tools.device import Device
 import tools.mtio

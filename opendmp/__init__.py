@@ -28,28 +28,12 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-import sys, os, traceback, faulthandler
+import sys, os, socket, traceback, faulthandler
 from tools.log import Log
 from tools.config import Config
 from tools.daemon import Daemon
-from server.server import NDMPServer
+from server.server import Server
 import asyncore
-
-def start_server():
-    stdlog.info('Starting NDMP server')
-    server = NDMPServer(cfg['HOST'], int(cfg['PORT']))
-    try:
-        asyncore.loop()
-    except:
-        stdlog.debug('*'*60)
-        stdlog.debug(traceback.format_exc())
-        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
-        stdlog.debug('*'*60)
-
-class MyDaemon(Daemon):
-    def run(self):
-        while True:
-            start_server()
 
 # get config
 try:
@@ -71,6 +55,34 @@ except:
     print('Something wrong with logfile, exiting')
     sys.exit(1)
     
+class NDMPServer(asyncore.dispatcher):
+    def __init__(self):
+        asyncore.dispatcher.__init__(self)
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.set_reuse_addr()
+        self.bind((cfg['HOST'], int(cfg['PORT'])))
+        self.listen(1)
+            
+    def handle_accepted(self, connection, address):
+        stdlog.info('Connection from ' + repr(address))
+        # Start an asyncore Consumer for this connection
+        Server(connection)
+
+class NDMPDaemon(Daemon):
+    def run(self):
+        while True:
+            NDMPServer()
+            start_asyncore()
+
+def start_asyncore():
+    try:
+        asyncore.loop()
+    except:
+        stdlog.debug('*'*60)
+        stdlog.debug(traceback.format_exc())
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        stdlog.debug('*'*60)
+                
 if __name__ == "__main__":
     if not (os.path.exists(cfg['RUNDIR'])):
         try:
@@ -78,11 +90,15 @@ if __name__ == "__main__":
         except OSError as e:
             stdlog.error(e)
             sys.exit(1)
-    daemon = MyDaemon(os.path.join(cfg['RUNDIR'],'daemon.pid'))
+            
+    daemon = NDMPDaemon(os.path.join(cfg['RUNDIR'],'daemon.pid'))
+    
     if len(sys.argv) == 2:
+        stdlog.info('Starting NDMP server')
         if '--debug' == sys.argv[1]:
             stdlog.setLevel(10)
-            start_server()
+            NDMPServer()
+            start_asyncore()
         if 'start' == sys.argv[1]:
             daemon.start()
         elif 'stop' == sys.argv[1]:

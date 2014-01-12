@@ -4,7 +4,7 @@ and fork a subprocess'''
 
 from tools.config import Config; cfg = Config.cfg; c = Config;
 from tools.log import Log; stdlog = Log.stdlog
-import socket, struct, traceback
+import struct, traceback
 from xdr.record import Record
 from interfaces import notify
 import asyncore
@@ -21,7 +21,7 @@ class Server(asyncore.dispatcher):
         
     def writeable(self):
         if self.record.queue.qsize() > 0:
-            # A response is in the record's queue
+            # An answer is in the record's queue
             return True
 
     def handle_write(self):
@@ -39,6 +39,7 @@ class Server(asyncore.dispatcher):
         message = b''
         while not last:
             rec_mark = self._recv_all(4)
+            if not rec_mark: return
             count = struct.unpack('>L', rec_mark)[0]
             last = count & 0x80000000
             if last:
@@ -54,6 +55,7 @@ class Server(asyncore.dispatcher):
     def handle_close(self):
         stdlog.info('Connection with ' + repr(self.addr) + ' closed')
         self.close()
+        return
     
     def _recv_all(self, n):
         """Receive n bytes, or terminate connection"""
@@ -62,23 +64,7 @@ class Server(asyncore.dispatcher):
             newdata = self.recv(n)
             count = len(newdata)
             if not count:
-                raise socket.error
+                return
             data += newdata
             n -= count
         return data
-
-class NDMPServer(asyncore.dispatcher):
-
-    def __init__(self, hostname, port):
-        asyncore.dispatcher.__init__(self)
-        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.set_reuse_addr()
-        self.bind((hostname, port))
-        self.listen(1)
-            
-    def handle_accepted(self, connection, address):
-        stdlog.info('Connection from ' + repr(address))
-        # Start a asyncore Consumer for this connection
-        Server(connection)
-
-

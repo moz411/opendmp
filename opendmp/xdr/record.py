@@ -54,7 +54,7 @@ class Record():
                 'dumpdates': {},
                 'stampfile': None,
                 'stats':  {'total': 0,
-                           'current': [0]}}
+                           'current': 0}}
         
         self.mover = {'mode': const.NDMP_MOVER_MODE_NOACTION,
                  'state': const.NDMP_MOVER_STATE_IDLE,
@@ -66,7 +66,7 @@ class Record():
                  'pause_reason': const.NDMP_MOVER_PAUSE_NA,
                  'record_size': 0,
                  'record_num': 0,
-                 'bytes_moved': [0],
+                 'bytes_moved': 0,
                  'seek_position': 0,
                  'bytes_left_to_read': 0,
                  'window_length': 0, 
@@ -75,6 +75,17 @@ class Record():
         self.fh = {'files': [],
                   'history': None,
                   'max_lines': 1000}
+        
+        self.tape = {'path': None,
+                    'data': None,
+                    'fd': None,
+                    'hctl': None,
+                    'opened': False,
+                    'sgio': None,
+                    'mt': None,
+                    'datain_len': None,
+                    'mode': None,
+                    'count': 0}
         
     def __repr__(self):
         out = []

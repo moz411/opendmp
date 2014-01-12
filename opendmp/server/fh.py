@@ -2,40 +2,37 @@
 
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-import threading, sys, time, traceback, stat, os, select
-from xdr import ndmp_const as const
-from interfaces import notify as nt, fh
+import asyncore, traceback
+from interfaces import fh
 from tools import utils as ut
 
-class Fh(threading.Thread):
+class Fh(asyncore.file_dispatcher):
     
     def __init__(self, record):
-        threading.Thread.__init__(self, name='Fh-' + repr(threading.activeCount()))
         self.record = record
+        self.file = open(self.record.fh['history'], mode='rb')
+        asyncore.file_dispatcher.__init__(self, self.file)
         
-    def run(self):
-        stdlog.info('Starting File History of ' + self.record.data['env']['FILESYSTEM'])
-        with open(self.record.fh['history'], mode='rb') as file:
-            while not self.record.fh['equit'].is_set():
-                time.sleep(0.001)
-                try:
-                    (read, write, error) = select.select([file.fileno()], [], [])
-                    if read:
-                        line = file.readline()
-                        if line: self.record.fh['files'].append(line.strip())
-                    if len(self.record.fh['files']) >= self.record.fh['max_lines']:
+    def writeable(self):
+        return False
+        
+    def readeable(self):
+        return True
+
+    def handle_read(self):
+        line = self.file.readline()
+        if line: self.record.fh['files'].append(line.strip())
+        if len(self.record.fh['files']) >= self.record.fh['max_lines']:
                         fh.add_file().post(self.record)
-                    if self.record.fh['equit'].is_set():
-                        break
-                except OSError as e:
-                    stdlog.error(e)
-                    sys.exit()
-        try:
-            if (len(self.record.fh['files']) > 0):
+
+    def handle_error(self):
+        stdlog.info('FH> Listing read failed')
+        stdlog.debug(traceback.print_exc())
+        self.handle_close()
+        
+    def handle_close(self):
+        if (len(self.record.fh['files']) > 0):
                 fh.add_file().post(self.record)
-            ut.clean_file(self.record.fh['history'])
-        except OSError as e:
-            stdlog.error(e)
-        finally:
-            stdlog.info('File History operation finished')
-            sys.exit()
+        self.close()
+        ut.clean_file(self.record.fh['history'])
+        stdlog.info('File History operation finished')

@@ -7,54 +7,39 @@ of data that can be written to the tape device.
 '''
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config; threads = Config.threads
-import os, subprocess, shlex, time
+import os, subprocess, shlex, time, socket, asyncore
 from server.data import Data
-from server.data import Wait_Connection
 from server.fh import Fh
 from xdr import ndmp_const as const, ndmp_type as type
 from tools import utils as ut, ipaddress as ip
 from interfaces import notify as nt
 
-class connect():
+class connect(asyncore.dispatcher):
     '''This request is used by the DMA to instruct the Data Server to
         establish a data connection to a Tape Server or peer Data Server'''
     
     def request_v4(self, record):
-        if(record.data['state'] != const.NDMP_DATA_STATE_IDLE):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-            return
-        elif(record.b.addr_type == const.NDMP_ADDR_LOCAL):
-            record.data['addr_type'] = const.NDMP_ADDR_LOCAL
-            try:
-                peer = type.ndmp_tcp_addr
-                peer.ip_addr = record.mover['host']
-                peer.port = record.mover['port']
-                record.data['fd'] = ip.get_data_conn([peer])
-                record.data['host'], record.data['port'] = record.data['fd'].getsockname()
-                record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
-                stdlog.info('DATA> Connected to ' + repr((record.mover['host'],record.mover['port'])))
-            except Exception as e:
-                record.error = const.NDMP_DATA_HALT_CONNECT_ERROR
-                stdlog.error('DATA> Cannot connect to ' + 
-                             repr((record.mover['host'],record.mover['port'])) + ': ' + repr(e))
-        elif(record.b.addr_type == const.NDMP_ADDR_IPC):
-            # TODO: implement NDMP_ADDR_IPC
-            pass
-        elif(record.b.addr_type == const.NDMP_ADDR_TCP):
-            record.data['addr_type'] = const.NDMP_ADDR_TCP
-            # Try to use the fastest connection in the given list
-            try:
-                #record.data['fd'] = ip.get_best_data_conn(record.b.tcp_addr)
-                record.data['fd'] = ip.get_data_conn(record.b.tcp_addr)
-                record.data['host'], record.data['port'] = record.data['fd'].getsockname()
-                record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
-                stdlog.info('DATA> Connected to ' + repr(record.b.tcp_addr))
-            except Exception as e:
-                record.error = const.NDMP_DATA_HALT_CONNECT_ERROR
-                stdlog.error('DATA> Cannot connect to ' + repr(record.b.tcp_addr) + ': ' + repr(e))
+        self.record = record
+        if(self.record.data['state'] != const.NDMP_DATA_STATE_IDLE):
+            self.record.error = const.NDMP_ILLEGAL_STATE_ERR
+        else:
+            self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.set_reuse_addr()
+            self.record.data['addr_type'] = self.record.b.addr_type
+            ip_int = self.record.b.tcp_addr[0].ip_addr
+            host = ip.IPv4Address(ip_int)._string_from_ip_int(ip_int)
+            self.connect((host, self.record.b.tcp_addr[0].port))
+            self.record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
+            self.record.data['host'], self.record.data['port'] = self.socket.getpeername()
+            self.record.data['peer'] = self.socket
+            stdlog.info('DATA> Connected to ' + self.record.data['host'] + ': ' + repr(self.record.data['port']))
             
     def reply_v4(self, record):
         pass
+    
+    def handle_error(self):
+        self.record.error = const.NDMP_DATA_HALT_CONNECT_ERROR
+        stdlog.error('DATA> Connection failed')
 
     request_v3 = request_v4
     reply_v3 = reply_v4
@@ -71,79 +56,54 @@ class listen():
         if(record.data['state'] != const.NDMP_DATA_STATE_IDLE):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
             return
-        elif(record.b.addr_type == const.NDMP_ADDR_LOCAL):
-            try:
-                record.data['addr_type'] = const.NDMP_ADDR_LOCAL
-                record.data['local_address'] = ip.get_next_data_conn()
-                record.data['host'], record.data['port'] = record.data['local_address'].getsockname()
-                record.data['state'] = const.NDMP_DATA_STATE_LISTEN
-                # Launch the Wait Connection thread
-                listen_thread = Wait_Connection(record)
-                listen_thread.start()
-                threads.append(listen_thread)
-            except OSError as e:
-                stdlog.error(e)
-                record.error = const.NDMP_ILLEGAL_ARGS_ERR
-        elif(record.b.addr_type == const.NDMP_ADDR_IPC):
-            # TODO: implement NDMP_ADDR_IPC
-            pass
-        elif(record.b.addr_type == const.NDMP_ADDR_TCP):
-            try:
-                record.data['addr_type'] = const.NDMP_ADDR_TCP
-                record.data['local_address'] = ip.get_next_data_conn()
-                record.data['host'], record.data['port'] = record.data['local_address'].getsockname()
-                record.data['state'] = const.NDMP_DATA_STATE_LISTEN
-                # Launch the Wait Connection thread
-                listen_thread = Wait_Connection(record)
-                listen_thread.start()
-                threads.append(listen_thread)
-            except OSError as e:
-                stdlog.error(e)
-                record.error = const.NDMP_ILLEGAL_ARGS_ERR
+        else:
+            record.data['addr_type'] = record.b.addr_type
+            fd = ip.get_next_data_conn()
+            (hostname, port) = fd.getsockname()
+            fd.close()
+            self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.set_reuse_addr()
+            self.bind((hostname, port))
+            self.listen(1)
+            host, record.data['port'] = self.getsockname()
+            record.data['host'] = ip.ip_address(host)._ip_int_from_string(host)
+            record.data['state'] = const.NDMP_DATA_STATE_LISTEN
+            self.record = record
         
         
     def reply_v4(self, record):
         with record.data['lock']:
             if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
                 record.error = const.NDMP_ILLEGAL_STATE_ERR
-                return
-            elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
-                addr = ip.IPv4Address(record.data['host'])
+            else:
                 record.b.connect_addr = type.ndmp_addr_v4()
-                record.b.connect_addr.addr_type = const.NDMP_ADDR_LOCAL
-            elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
-                # TODO: implement NDMP_ADDR_IPC
-                pass
-            elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
-                addr = ip.IPv4Address(record.data['host'])
-                record.b.connect_addr = type.ndmp_addr_v4()
-                record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
+                record.b.connect_addr.addr_type = record.data['addr_type']
+            if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
                 record.b.connect_addr.tcp_addr = []
-                tcp_addr = type.ndmp_tcp_addr_v4(addr._ip_int_from_string(record.data['host']),
-                                                 record.data['port'],[])
+                tcp_addr = type.ndmp_tcp_addr_v4(record.data['host'],record.data['port'],[])
                 record.b.connect_addr.tcp_addr.append(tcp_addr)
-            
+                record.data['peer'] = tcp_addr
+                
     def reply_v3(self, record):
-        with self.record.data['lock']:
-            if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
-                record.error = const.NDMP_ILLEGAL_STATE_ERR
-                return
-            elif(record.data['addr_type'] == const.NDMP_ADDR_LOCAL):
-                addr = ip.IPv4Address(record.data['host'])
-                record.b.connect_addr = type.ndmp_addr_v3()
-                record.b.connect_addr.addr_type = const.NDMP_ADDR_LOCAL
-            elif(record.data['addr_type'] == const.NDMP_ADDR_IPC):
-                # TODO: implement NDMP_ADDR_IPC
-                pass
-            elif(record.data['addr_type'] == const.NDMP_ADDR_TCP):
-                addr = ip.IPv4Address(record.data['host'])
-                record.b.connect_addr = type.ndmp_addr_v3()
-                record.b.connect_addr.addr_type = const.NDMP_ADDR_TCP
-                record.b.connect_addr.tcp_addr = type.ndmp_tcp_addr()
-                record.b.connect_addr.tcp_addr.ip_addr = addr._ip_int_from_string(record.data['host'])
-                record.b.connect_addr.tcp_addr.port = record.data['port']
+        if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
+            record.error = const.NDMP_ILLEGAL_STATE_ERR
+        else:
+            record.b.connect_addr = type.ndmp_addr_v4()
+            record.b.connect_addr.addr_type = record.data['addr_type']
+            if(record.data['addr_type'] == const.NDMP_ADDR_TCP):
+                record.b.data_connection_addr = type.ndmp_addr_v3
+                record.b.data_connection_addr.addr_type = const.NDMP_ADDR_TCP
+                record.b.data_connection_addr.tcp_addr = type.ndmp_tcp_addr
+                record.b.data_connection_addr.tcp_addr.ip_addr = record.data['host']
+                record.b.data_connection_addr.tcp_addr.port = record.data['port']
             
     request_v3 = request_v4
+    
+    def handle_accepted(self, connection, address):
+        stdlog.info('DATA> Connection from ' + repr(address))
+        # Start an asyncore Consumer for this connection
+        Data(connection, self.record)
+        self.record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
 
 class start_backup():
     '''This request is used by the DMA to instruct the Data Server to
@@ -235,18 +195,11 @@ class start_backup():
             return
         
         # Launch the File History generation thread
-        fh_thread = Fh(record)
-        fh_thread.start()
-        threads.append(fh_thread)
-        record.fh_thread = fh_thread
+        Fh(record)
         
-        # Launch the backup thread
-        data_thread = Data(record)
-        data_thread.start()
-        threads.append(data_thread)
-        
-        with record.data['lock']:
-            record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
+        # Launch the backup asyncore Consumer
+        Data(record)
+        record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
 
 
     def reply_v4(self, record):
@@ -404,14 +357,13 @@ class get_state():
        set.'''
     
     def reply_v4(self, record):
-        sent = record.data['stats']['current'][0]
-        with record.data['lock']:
-            record.b.state = record.data['state']
-            remain = record.data['stats']['total'] - sent
-            record.b.unsupported = (const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID |
-                                    const.NDMP_DATA_STATE_EST_BYTES_REMAIN_INVALID)
-            record.b.operation = record.data['operation']
-            record.b.halt_reason = record.data['halt_reason']
+        sent = record.data['stats']['current']
+        record.b.state = record.data['state']
+        remain = record.data['stats']['total'] - sent
+        record.b.unsupported = (const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID |
+                                const.NDMP_DATA_STATE_EST_BYTES_REMAIN_INVALID)
+        record.b.operation = record.data['operation']
+        record.b.halt_reason = record.data['halt_reason']
         record.b.bytes_processed = ut.long_long_to_quad(sent)
         # record.b.est_bytes_remain = ut.long_long_to_quad(remain)
         record.b.est_bytes_remain = ut.long_long_to_quad(0)
@@ -460,18 +412,12 @@ class stop():
        the IDLE state.'''
     
     def reply_v4(self, record):
-        record.fh['equit'].set() # Will close the fh thread
-        record.data['equit'].set() # Will close the data thread
-        
         if(record.data['state'] != const.NDMP_DATA_STATE_HALTED):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         else:
-            try:
-                record.data['halt_reason'] = const.NDMP_DATA_HALT_NA
-                record.data['state'] = const.NDMP_DATA_STATE_IDLE
-                record.data['operation'] = const.NDMP_DATA_OP_NOACTION
-            except OSError as e:
-                stdlog.error(e)
+            record.data['halt_reason'] = const.NDMP_DATA_HALT_NA
+            record.data['state'] = const.NDMP_DATA_STATE_IDLE
+            record.data['operation'] = const.NDMP_DATA_OP_NOACTION
                 
     reply_v3 = reply_v4
 
@@ -491,10 +437,6 @@ class abort():
                 stdlog.error('Cannot stop process ' + repr(record.data['process'].pid) + ':' + e.strerror)
             except AttributeError:
                 stdlog.error('Process already stopped')
-            record.fh['equit'].set() # Will close the fh thread
-            stdlog.info('aborting fh thread')
-            record.data['equit'].set() # Will close the data thread
-            stdlog.info('aborting data thread')
             
             record.data['halt_reason'] = const.NDMP_DATA_HALT_ABORTED
             record.data['state'] = const.NDMP_DATA_STATE_HALTED
