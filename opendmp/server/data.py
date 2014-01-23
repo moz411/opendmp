@@ -24,14 +24,16 @@ class Data(asyncore.dispatcher):
             self.file = open(self.record.data['bu_fifo'],'wb')
             nt.data_read().post(self.record)
     
-    def writeable(self): # Backup
-        if (self.record.data['operation'] == const.NDMP_DATA_OP_BACKUP
-            and self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE):
+    def writable(self): # Backup
+        if (self.record.data['operation'] == const.NDMP_DATA_OP_BACKUP and
+            self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE and
+            self.record.error == const.NDMP_NO_ERR):
             return True
         
-    def readeable(self): # Recover
-        if (self.record.data['operation'] == const.NDMP_DATA_OP_RECOVER
-            and self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE):
+    def readable(self): # Recover
+        if (self.record.data['operation'] == const.NDMP_DATA_OP_RECOVER and
+            self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE
+            and self.record.error == const.NDMP_NO_ERR):
             return True
 
     def handle_write(self): # Backup

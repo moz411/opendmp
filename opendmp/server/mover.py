@@ -1,7 +1,7 @@
 '''This module create a asyncore Consumer for Mover operations
 and process the data stream'''
 
-import asyncore, traceback, errno
+import asyncore, errno
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
@@ -16,23 +16,22 @@ class Mover(asyncore.dispatcher):
         # Set tape block size
         self.record.device.count = self.record.mover['record_size']
         
-    def writeable(self):
-        if (self.record.mover['mode'] == const.NDMP_MOVER_MODE_WRITE and
-            self.record.mover['state'] == const.NDMP_MOVER_STATE_ACTIVE and
-            self.record.error == const.NDMP_NO_ERR):
-            return True
-        
-    def readeable(self):
+    def readable(self): # Backup
         if (self.record.mover['mode'] == const.NDMP_MOVER_MODE_READ and
             self.record.mover['state'] == const.NDMP_MOVER_STATE_ACTIVE and
             self.record.error == const.NDMP_NO_ERR):
             return True
+        
+    def writable(self): # Recover
+        if (self.record.mover['mode'] == const.NDMP_MOVER_MODE_WRITE and
+            self.record.mover['state'] == const.NDMP_MOVER_STATE_ACTIVE and
+            self.record.error == const.NDMP_NO_ERR):
+            return True
 
-    def handle_write(self): # Backup
+    def handle_read(self): # Backup
         try:
             self.record.device.data = self.recv(int(cfg['BUFSIZE']))
             self.record.device.write(self.record)
-            #with self.record.mover['lock']:
             self.record.mover['bytes_moved'] += len(self.record.device.data)
         except (OSError, IOError) as e:
             stdlog.error(self.record.device.path + ': ' + e.strerror)
@@ -47,15 +46,15 @@ class Mover(asyncore.dispatcher):
             elif(e.errno == errno.ENOSPC):
                 self.record.error = const.NDMP_EOM_ERR
                 self.record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
-                self.pause()
+                stdlog.info('MOVER> pausing status ' + repr(const.ndmp_error[self.record.error]))
+                self.record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
+                self.record.queue.put(nt.mover_paused().post(self.record))
             else:
                 self.record.error = const.NDMP_IO_ERR
-            raise
         
-    def handle_read(self): # Recover
+    def handle_write(self): # Recover
         try:
             self.record.device.read(self.record)
-            #with self.record.mover['lock']:
             self.record.mover['bytes_moved'] += self.send(self.record.device.data)
         except (OSError, IOError) as e:
             stdlog.error(self.record.device.path + ': ' + e.strerror)
@@ -70,14 +69,14 @@ class Mover(asyncore.dispatcher):
             elif(e.errno == errno.ENOSPC):
                 self.record.error = const.NDMP_EOM_ERR
                 self.record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
-                self.pause()
+                stdlog.info('MOVER> pausing status ' + repr(const.ndmp_error[self.record.error]))
+                self.record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
+                self.record.queue.put(nt.mover_paused().post(self.record))
             else:
                 self.record.error = const.NDMP_IO_ERR
-            raise
 
     def handle_error(self):
         stdlog.info('MOVER> Connection with ' + repr(self.addr) + ' failed')
-        stdlog.debug(traceback.print_exc())
         self.record.mover['halt_reason'] = const.NDMP_MOVER_HALT_INTERNAL_ERROR
         self.handle_close() # connection failed, shutdown
         
@@ -87,8 +86,3 @@ class Mover(asyncore.dispatcher):
         self.record.queue.put(nt.mover_halted().post(self.record))
         stdlog.info('MOVER> closing status ' + repr(const.ndmp_error[self.record.error]))
         self.record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
-        
-    def pause(self):
-        stdlog.info('MOVER> pausing status ' + repr(const.ndmp_error[self.record.error]))
-        self.record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
-        self.record.queue.put(nt.mover_paused().post(self.record))

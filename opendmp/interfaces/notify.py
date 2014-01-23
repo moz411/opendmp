@@ -139,9 +139,8 @@ class mover_paused():
         
         # Body
         body = type.ndmp_notify_mover_paused_request()
-        with record.mover['lock']:
-            body.reason = record.mover['pause_reason']
-            body.seek_position = ut.long_long_to_quad(record.mover['seek_position'])
+        body.reason = record.mover['pause_reason']
+        body.seek_position = ut.long_long_to_quad(record.mover['seek_position'])
         p.pack_ndmp_notify_mover_paused_request(body)
         stdlog.debug(body)
         record.queue.put(p.get_buffer())

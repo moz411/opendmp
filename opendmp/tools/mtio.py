@@ -6,7 +6,8 @@ from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 import xdr.ndmp_const as const
 from tools import utils as ut
-from ctypes import *
+from ctypes import (create_string_buffer, sizeof, memset, Structure,
+                    c_short, c_int, c_long)
 from fcntl import ioctl
 from os import errno
 

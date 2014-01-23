@@ -161,6 +161,7 @@ class listen(asyncore.dispatcher):
         # Start an asyncore Consumer for this connection
         Mover(connection, self.record)
         self.record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
+        self.close()
 
 class read():
     '''This request is used by the DMA to instruct the mover to begin
