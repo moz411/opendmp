@@ -81,6 +81,7 @@ class Mover(asyncore.dispatcher):
         self.handle_close() # connection failed, shutdown
         
     def handle_close(self):
+        self.record.device.writer.flush() # Flush remaining buffer to tape
         stdlog.info('MOVER> Connection with ' + repr(self.addr) + ' closed')
         self.close()
         self.record.queue.put(nt.mover_halted().post(self.record))
