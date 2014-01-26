@@ -38,6 +38,7 @@ class Data(asyncore.dispatcher):
 
     def handle_write(self): # Backup
         data = self.file.read(int(cfg['BUFSIZE']))
+        if not data: self.close()
         self.record.data['stats']['current'] += self.send(data)
 
     def handle_read(self): # Recover
@@ -83,9 +84,6 @@ class Data(asyncore.dispatcher):
             self.record.error = const.NDMP_ILLEGAL_STATE_ERR
             self.record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
         stdlog.info('DATA> BU finished status ' + repr(self.record.data['retcode']))
-        
-    def pause(self):
-        pass
             
     def update_dumpdate(self):            
         try:

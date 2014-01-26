@@ -1,3 +1,10 @@
 CM 01 +0/0
+DE 'FILES'='/usr/local'
+DE 'FILESYSTEM'='/usr/local'
+DE 'HIST'='y'
+DE 'LEVEL'=0
+DE 'PATHNAME_SEPARATOR'='/'
+DE 'TYPE'='tar'
+DE 'USER'='ndmp'
 ##ndmjob -I
 ##ndmjob -J

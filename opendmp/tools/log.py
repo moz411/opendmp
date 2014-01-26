@@ -26,11 +26,9 @@ class Log:
             print('Cannot write to ' + cfg['LOGFILE'] + ', (are you root?)')
         
         if self.stdlog.isEnabledFor(logging.DEBUG):
-            formatter = logging.Formatter(
-                '0x%(thread)x: %(message)s'
-                )
+            formatter = logging.Formatter('%(module)s %(funcName)s: %(message)s')
         else:
-            formatter = logging.Formatter('%(asctime)s - %(levelname)s -  %(threadName)s - %(message)s', "%Y-%m-%d %H:%M:%S")
+            formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', "%Y-%m-%d %H:%M:%S")
         
         rh.setFormatter(formatter)
         sh.setFormatter(formatter)

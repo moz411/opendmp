@@ -10,7 +10,6 @@ notifies the DMA.
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 import asyncore, socket, traceback
-from io import BufferedReader
 from tools import utils as ut, ipaddress as ip
 from xdr import ndmp_const as const, ndmp_type as type
 from server.mover import Mover
@@ -174,15 +173,7 @@ class read():
         elif(record.mover['window_length'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
         else:
-            try:
-                record.mover['buf'] = BufferedReader(record.mover['fd'], record.mover['window_length'])
-                record.mover['buf'].read(record.mover['window_length'])
-                record.mover['bytes_moved'] += record.mover['window_length']
-                record.mover['bytes_left_to_read'] -= record.mover['window_length']
-            except:
-                record.error = const.NDMP_UNDEFINED_ERR
-                stdlog.error('Mover read failed')
-                stdlog.debug(traceback.print_exc())
+            pass
             
     def reply_v4(self, record):
         pass
@@ -231,7 +222,7 @@ class spec_continue():
         elif(record.mover['window_length'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
         else:
-            record.mover['econt'].set()
+            record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
 
     reply_v3 = reply_v4
 
