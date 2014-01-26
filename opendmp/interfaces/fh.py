@@ -35,9 +35,8 @@ class add_file():
         mode = re.compile('(\d{,3})(\d{4})')
         #st_dev st_ino st_mode st_nlink st_uid st_gid st_rdev st_size st_atime st_mtime st_ctime 
         # st_birthtime st_blksize st_blocks st_gen name 
-        with record.fh['lock']:
-            lines = record.fh['files']
-            record.fh['files'] = []
+        lines = record.fh['files']
+        record.fh['files'] = []
         
         for line in lines:
             try:

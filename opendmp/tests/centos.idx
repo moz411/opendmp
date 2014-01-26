@@ -6,5 +6,36 @@ DE 'LEVEL'=0
 DE 'PATHNAME_SEPARATOR'='/'
 DE 'TYPE'='tar'
 DE 'USER'='ndmp'
+DHf /bin/make_scsi_dev UNIX f- m1363 u0 g0 s1876 tm1372713963 @0
+DHf /bin/make_vtl_media UNIX f- m1363 u0 g0 s4423 tm1372713963 @0
+DHf /bin/star UNIX fl m1411 u0 g0 s20 tm1386780959 @0
+DHf /bin UNIX fd m1363 u0 g0 tm1386780959 @0
+DHf /etc UNIX fd m1363 u0 g0 tm1360793246 @0
+DHf /games UNIX fd m1363 u0 g0 tm1360793246 @0
+DHf /include UNIX fd m1363 u0 g0 tm1360793246 @0
+DHf /lib/python2.7/dist-packages UNIX fd m5327 u0 g50 tm1360793254 @0
+DHf /lib/python2.7/site-packages UNIX fd m5327 u0 g50 tm1372192907 @0
+DHf /lib/python2.7 UNIX fd m5327 u0 g50 tm1372192907 @0
+DHf /lib/python3.2/dist-packages UNIX fd m5327 u0 g50 tm1372189150 @0
+DHf /lib/python3.2 UNIX fd m5327 u0 g50 tm1372189150 @0
+DHf /lib UNIX fd m1363 u0 g0 tm1372189150 @0
+DHf /man UNIX fl m1411 u0 g0 s9 tm1372169396 @0
+DHf /sbin UNIX fd m1363 u0 g0 tm1360793246 @0
+DHf /share/ca-certificates UNIX fd m5327 u0 g50 tm1360793381 @0
+DHf /share/fonts UNIX fd m5327 u0 g50 tm1360793385 @0
+DHf /share/man UNIX fd m1363 u0 g0 tm1360793246 @0
+DHf /share/sgml/declaration UNIX fd m5327 u0 g50 tm1360793420 @0
+DHf /share/sgml/dtd UNIX fd m5327 u0 g50 tm1360793420 @0
+DHf /share/sgml/entities UNIX fd m5327 u0 g50 tm1360793420 @0
+DHf /share/sgml/misc UNIX fd m5327 u0 g50 tm1360793420 @0
+DHf /share/sgml/stylesheet UNIX fd m5327 u0 g50 tm1360793420 @0
+DHf /share/sgml UNIX fd m5327 u0 g50 tm1360793420 @0
+DHf /share UNIX fd m1363 u0 g0 tm1360793421 @0
+DHf /share/xml/declaration UNIX fd m5327 u0 g50 tm1360793421 @0
+DHf /share/xml/entities UNIX fd m5327 u0 g50 tm1360793421 @0
+DHf /share/xml/misc UNIX fd m5327 u0 g50 tm1360793421 @0
+DHf /share/xml/schema UNIX fd m5327 u0 g50 tm1360793421 @0
+DHf /share/xml UNIX fd m5327 u0 g50 tm1360793421 @0
+DHf /src UNIX fd m1363 u0 g0 tm1360793246 @0
 ##ndmjob -I
 ##ndmjob -J

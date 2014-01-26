@@ -12,6 +12,7 @@ class Fh(asyncore.file_dispatcher):
         self.record = record
         self.file = open(self.record.fh['history'], mode='rb')
         asyncore.file_dispatcher.__init__(self, self.file)
+        stdlog.info('Starting File History of ' + self.record.data['env']['FILESYSTEM'])
         
     def writeable(self):
         return False
@@ -22,6 +23,7 @@ class Fh(asyncore.file_dispatcher):
     def handle_read(self):
         line = self.file.readline()
         if line: self.record.fh['files'].append(line.strip())
+        else: self.handle_close()
         if len(self.record.fh['files']) >= self.record.fh['max_lines']:
                         fh.add_file().post(self.record)
 
