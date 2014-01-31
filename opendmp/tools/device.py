@@ -1,4 +1,4 @@
-import os, io
+import os, errno
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
@@ -7,8 +7,7 @@ class Device():
     
     def __init__(self, path=None):
         self.path = path
-        self.data = b''
-        self.writer = None
+        self.data = None
         self.fd = None
         self.hctl = None
         self.opened = False
@@ -29,19 +28,36 @@ class Device():
     def open(self, record):
         if(record.h.message == const.NDMP_TAPE_OPEN):
             self.mode = record.b.mode
-        if(self.mode == const.NDMP_TAPE_READ_MODE):
-            self.fd = os.open(self.path, os.O_RDONLY)
-        elif(self.mode in [const.NDMP_TAPE_WRITE_MODE,
-                               const.NDMP_TAPE_RAW_MODE,
-                               const.NDMP_TAPE_RAW2_MODE]):
-            # mode = os.O_DIRECT
-            # TODO: fix O_DIRECT mode that did not work on Linux 2.6.38
-            # mode = os.O_RDWR | os.O_NDELAY
-            raw = open(self.path, 'wb')
-            self.writer = io.BufferedWriter(raw, record.mover['record_size'])
-            self.fd = self.writer.fileno()
-        self.opened = True
-        stdlog.info('device ' + self.path + ' opened')
+            if(record.b.mode == const.NDMP_TAPE_READ_MODE):
+                mode = os.O_RDONLY
+            elif(record.b.mode == const.NDMP_TAPE_WRITE_MODE):
+                mode = os.O_RDWR | os.O_NDELAY
+            elif(record.b.mode in [const.NDMP_TAPE_RAW_MODE,
+                                   const.NDMP_TAPE_RAW2_MODE]):
+                # mode = os.O_DIRECT
+                # TODO: fix O_DIRECT mode that did not work on Linux 2.6.38
+                mode = os.O_RDWR | os.O_NDELAY
+        else:
+            mode = os.O_RDWR | os.O_NDELAY
+        try:
+            self.fd = os.open(self.path, mode)
+        except (OSError, IOError) as e:
+            stdlog.error(record.device.path + ': ' + e.strerror)
+            if(e.errno == errno.EACCES):
+                record.error = const.NDMP_WRITE_PROTECT_ERR
+            elif(e.errno == errno.ENOENT):
+                record.error = const.NDMP_NO_DEVICE_ERR
+            elif(e.errno == errno.EBUSY):
+                record.error = const.NDMP_DEVICE_BUSY_ERR
+            elif(e.errno == errno.ENODEV):
+                record.error = const.NDMP_NO_DEVICE_ERR
+            elif(e.errno == 123):
+                record.error = const.NDMP_NO_TAPE_LOADED_ERR
+            else:
+                record.error = const.NDMP_IO_ERR
+        else:
+            self.opened = True
+            stdlog.info('device ' + self.path + ' opened')
         
     def close(self, record):
         os.close(self.fd)
@@ -52,5 +68,5 @@ class Device():
         self.data = os.read(self.fd, self.count)
             
     def write(self, record):
-        written = self.writer.write(self.data)
-        return written*8*1024 # in bits
+        self.count = os.write(self.fd, self.data)
+        return self.count*8*1024 # in bits

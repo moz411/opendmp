@@ -28,7 +28,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-import sys, os, socket, traceback, faulthandler
+import sys, os, socket, traceback, faulthandler, time
 from tools.log import Log
 from tools.config import Config
 from tools.daemon import Daemon
@@ -67,6 +67,14 @@ class NDMPServer(asyncore.dispatcher):
         stdlog.info('Connection from ' + repr(address))
         # Start an asyncore Consumer for this connection
         Server(connection)
+        
+    # Avoid 100% CPU usage with asyncore loop
+    def writeable(self):
+        return False
+    
+    def readable(self):
+        time.sleep(0.01)
+        return True
 
 class NDMPDaemon(Daemon):
     def run(self):
