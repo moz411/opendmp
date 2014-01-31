@@ -9,7 +9,8 @@ See http://tldp.org/HOWTO/SCSI-Generic-HOWTO/sg_io_hdr_t.html
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 import xdr.ndmp_const as const
-from ctypes import *
+from ctypes import (Structure, c_int, c_ubyte, c_ushort, c_uint, c_void_p,
+                    create_string_buffer, sizeof, memset, cast)
 from fcntl import ioctl
 from os import errno
 

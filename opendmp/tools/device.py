@@ -1,4 +1,4 @@
-import os, errno
+import os, errno, traceback
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
@@ -43,6 +43,7 @@ class Device():
             self.fd = os.open(self.path, mode)
         except (OSError, IOError) as e:
             stdlog.error(record.device.path + ': ' + e.strerror)
+            traceback.print_exc()
             if(e.errno == errno.EACCES):
                 record.error = const.NDMP_WRITE_PROTECT_ERR
             elif(e.errno == errno.ENOENT):
