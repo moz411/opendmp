@@ -364,6 +364,13 @@ class stop():
         if(record.data['state'] != const.NDMP_DATA_STATE_HALTED):
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         else:
+            try:
+                record.data['process'].kill()
+                record.data['process'].wait()
+            except OSError as e:
+                stdlog.error('Cannot stop process ' + repr(record.data['process'].pid) + ':' + e.strerror)
+            except AttributeError:
+                stdlog.info('Process already stopped')
             record.data['halt_reason'] = const.NDMP_DATA_HALT_NA
             record.data['state'] = const.NDMP_DATA_STATE_IDLE
             record.data['operation'] = const.NDMP_DATA_OP_NOACTION

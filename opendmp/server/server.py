@@ -55,9 +55,8 @@ class Server(asyncore.dispatcher):
         
     def handle_close(self):
         stdlog.info('Connection with ' + repr(self.addr) + ' closed')
-        self.record.close
+        self.record.close()
         self.close()
-        return
     
     def _recv_all(self, n):
         """Receive n bytes, or terminate connection"""
