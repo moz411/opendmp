@@ -72,17 +72,16 @@ class listen():
         
         
     def reply_v4(self, record):
-        with record.data['lock']:
-            if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
-                record.error = const.NDMP_ILLEGAL_STATE_ERR
-            else:
-                record.b.connect_addr = type.ndmp_addr_v4()
-                record.b.connect_addr.addr_type = record.data['addr_type']
-            if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
-                record.b.connect_addr.tcp_addr = []
-                tcp_addr = type.ndmp_tcp_addr_v4(record.data['host'],record.data['port'],[])
-                record.b.connect_addr.tcp_addr.append(tcp_addr)
-                record.data['peer'] = tcp_addr
+        if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
+            record.error = const.NDMP_ILLEGAL_STATE_ERR
+        else:
+            record.b.connect_addr = type.ndmp_addr_v4()
+            record.b.connect_addr.addr_type = record.data['addr_type']
+        if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
+            record.b.connect_addr.tcp_addr = []
+            tcp_addr = type.ndmp_tcp_addr_v4(record.data['host'],record.data['port'],[])
+            record.b.connect_addr.tcp_addr.append(tcp_addr)
+            record.data['peer'] = tcp_addr
                 
     def reply_v3(self, record):
         if(record.data['state'] != const.NDMP_DATA_STATE_LISTEN):
@@ -111,7 +110,6 @@ class start_backup():
        the file system represented by this Data Server to a Tape Server or
        peer Data Server over the previously established data connection.'''
     
-    @profile
     def request_v4(self, record):
         bu_type = bytes.decode(record.b.bu_type).strip()
         record.data['operation'] = const.NDMP_DATA_OP_BACKUP
@@ -180,8 +178,6 @@ class start_backup():
         # Launch the File History asyncore Consumer
         Fh(record)
         
-
-
     def reply_v4(self, record):
         pass
 
@@ -268,13 +264,9 @@ class start_recover():
             return
         stdlog.debug(command_line)
         
-        # Launch the recover thread
-        data_thread = Data(record)
-        data_thread.start()
-        threads.append(data_thread)
-        
-        with record.data['lock']:
-            record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
+        # Launch the backup asyncore Consumer
+        Data(record)
+        record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
         
         # Launch the recover process
         with open(record.data['bu_fifo'] + '.err', 'w', encoding='utf-8') as error:
@@ -283,29 +275,6 @@ class start_recover():
                                                    stderr=error,
                                                    cwd=record.data['nlist']['destination_dir'],
                                                    shell=False)
-        
-        # Check if the bu process have already died
-        time.sleep(1)
-        retcode = record.data['process'].poll()
-        if retcode:
-            record.data['state'] = const.NDMP_DATA_STATE_HALTED
-            record.data['operation'] = const.NDMP_DATA_OP_NOACTION
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-            record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
-            with open(record.data['bu_fifo'] + '.err', 'rb') as logfile:
-                for line in logfile:
-                    record.data['error'].append(line.strip())
-                    stdlog.error(line.decode())
-            nt.data_halted().post(record)
-            
-            try:
-                for tmpfile in [record.data['bu_fifo'] + '.err',
-                                record.data['bu_fifo']]:
-                    if tmpfile is not None: ut.clean_file(tmpfile)
-            except OSError:
-                stdlog.error('cleanup of history files failed')
-                
-            return
     
     def reply_v4(self, record):
         pass
