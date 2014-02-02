@@ -33,6 +33,8 @@ from tools.log import Log
 from tools.config import Config
 from tools.daemon import Daemon
 from server.server import Server
+from server.data import Data
+from server.mover import Mover
 import asyncore
 
 # get config
@@ -73,6 +75,10 @@ class NDMPServer(asyncore.dispatcher):
         return False
     
     def readable(self):
+        for (key, value) in self._map.items():
+            if (isinstance(value, Data) or
+                isinstance(value, Mover)):
+                return True
         time.sleep(0.01)
         return True
 

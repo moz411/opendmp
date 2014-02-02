@@ -111,6 +111,7 @@ class start_backup():
        the file system represented by this Data Server to a Tape Server or
        peer Data Server over the previously established data connection.'''
     
+    @profile
     def request_v4(self, record):
         bu_type = bytes.decode(record.b.bu_type).strip()
         record.data['operation'] = const.NDMP_DATA_OP_BACKUP

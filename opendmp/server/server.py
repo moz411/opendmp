@@ -50,10 +50,12 @@ class Server(asyncore.dispatcher):
     def handle_error(self):
         stdlog.info('Connection with ' + repr(self.addr) + ' failed')
         stdlog.debug(traceback.print_exc())
+        self.record.close()
         self.close() # connection failed, shutdown
         
     def handle_close(self):
         stdlog.info('Connection with ' + repr(self.addr) + ' closed')
+        self.record.close
         self.close()
         return
     
