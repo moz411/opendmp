@@ -12,6 +12,7 @@ class Record():
     that is shared in the program'''
     
     def __init__(self):
+        self.fileno = 0
         self.queue = queue.Queue()
         self.challenge = random.randint(0, 2**64).to_bytes(64, 'big')
         self.h = type.ndmp_header()
@@ -133,7 +134,7 @@ class Record():
                     return
                 
         # debug
-        stdlog.debug(repr(self))
+        stdlog.debug('[%d] ' + repr(self), self.fileno)
         
         # Unpack body
         if(self.verify_sequence()):
@@ -156,8 +157,8 @@ class Record():
             self.body()
             
         # debug
-        stdlog.debug(repr(self))
-        stdlog.debug('\t' + repr(self.b))
+        stdlog.debug('[%d] ' + repr(self), self.fileno)
+        stdlog.debug('[%d] \t' + repr(self.b), self.fileno)
         stdlog.debug('')
         
         # add the encoded answer to the message queue
@@ -182,7 +183,7 @@ class Record():
             exec('from ' + interface + ' import ' + func)
         except:
             self.error =  const.NDMP_NOT_SUPPORTED_ERR
-            stdlog.error(message + '_reply not supported')
+            stdlog.error('[%d] ' + message + '_reply not supported', self.fileno)
             stdlog.debug(traceback.print_exc())
             return
 
@@ -191,7 +192,7 @@ class Record():
                 exec('self.b = type.' + message + '_reply_' + self.protocol_version + '()')
             except NameError:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
-                stdlog.error(message + '_reply not supported')
+                stdlog.error('[%d] ' + message + '_reply not supported', self.fileno)
                 stdlog.debug(traceback.print_exc())
                 return
             
@@ -200,7 +201,7 @@ class Record():
                 exec(func + '().reply_' + self.protocol_version + '(self)')
             except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
-                stdlog.error(message + '_reply not supported')
+                stdlog.error('[%d] ' + message + '_reply not supported', self.fileno)
                 stdlog.debug(traceback.print_exc())
                 return
             
@@ -209,7 +210,8 @@ class Record():
                 exec('self.p.pack_' + message + '_reply_' + self.protocol_version +'(self.b)')
             except (TypeError, XDRError, AttributeError, NameError, struct.error):
                 self.error =  const.NDMP_XDR_ENCODE_ERR
-                stdlog.error('Error processing message ' + message+ '_reply_' + self.protocol_version)
+                stdlog.error('[%d] Error processing message ' + message+ '_reply_' + 
+                             self.protocol_version, self.fileno)
                 stdlog.debug(traceback.print_exc())
                 
         elif (self.h.message_type == const.NDMP_MESSAGE_REQUEST and 
@@ -229,18 +231,19 @@ class Record():
                 #prepare unpack function
                 exec('self.b  = self.u.unpack_' + message + '_request_' + self.protocol_version +'()')
                 # debug
-                stdlog.debug('\t' + repr(self.b))
+                stdlog.debug('[%d] \t' + repr(self.b),self.fileno)
                 stdlog.debug('')
                 # run "request" function
                 exec(func + '().request_' + self.protocol_version +'(self)')
             except (TypeError, XDRError, AttributeError, EOFError):
                 self.error =  const.NDMP_XDR_DECODE_ERR
-                stdlog.error('Error processing message ' + message + '_request_' + self.protocol_version)
+                stdlog.error('[%d] Error processing message ' + message + '_request_' + 
+                             self.protocol_version, self.fileno)
                 stdlog.debug(traceback.print_exc())
                 return
             except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
-                stdlog.error(message + '_request not supported')
+                stdlog.error('[%d] ' + message + '_request not supported', self.fileno)
                 stdlog.debug(traceback.print_exc())
                 return    
     
@@ -297,14 +300,19 @@ class Record():
         self.p.reset()
         
     def close(self):
+        # Kill BU process if any
+        # Close device if any
+        try:
+            self.data['process'].kill()
+            self.data['process'].wait()
+        except OSError as e:
+            stdlog.error('[%d] Cannot stop process ' + repr(self.data['process'].pid) +
+                          ':' + e.strerror, self.fileno)
+        except AttributeError:
+            pass
         try:
             self.device.close(self)
-        except (AttributeError, KeyError):
-            pass
-        self.device = None
-        try:
-            from interfaces import mover, data
-            mover.stop().reply_v4(self)
-            data.stop().reply_v4(self)
-        except (AttributeError, KeyError):
+        except OSError as e:
+            stdlog.error(e)
+        except AttributeError:
             pass

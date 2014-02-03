@@ -35,7 +35,7 @@ class connection_status():
             body.reason = const.NDMP_SHUTDOWN
             body.text_reason = 'Aborted'
         p.pack_ndmp_notify_connected_request(body)
-        stdlog.debug(body)
+        stdlog.debug('[%d] ' + repr(body), record.fileno)
         record.queue.put(p.get_buffer())
         
 
@@ -61,7 +61,7 @@ class data_halted():
         body.reason = record.data['halt_reason']
         body.text_reason = b'\n'.join(repr(x).encode() for x in record.data['error'])
         p.pack_ndmp_notify_data_halted_request(body)
-        stdlog.debug(body)
+        stdlog.debug('[%d] ' + repr(body), record.fileno)
         record.queue.put(p.get_buffer())
 
 class data_read():
@@ -86,7 +86,7 @@ class data_read():
         body.offset = ut.long_long_to_quad(record.data['offset'])
         body.length = ut.long_long_to_quad(record.data['length'])
         p.pack_ndmp_notify_data_read_request(body)
-        stdlog.debug(body)
+        stdlog.debug('[%d] ' + repr(body), record.fileno)
         record.queue.put(p.get_buffer())
 
 
@@ -114,7 +114,7 @@ class mover_halted():
         body.reason = record.mover['halt_reason']
         body.text_reason = b'Finished'
         p.pack_ndmp_notify_mover_halted_request(body)
-        stdlog.debug(body)
+        stdlog.debug('[%d] ' + repr(body), record.fileno)
         record.queue.put(p.get_buffer())
 
 
@@ -142,5 +142,5 @@ class mover_paused():
         body.reason = record.mover['pause_reason']
         body.seek_position = ut.long_long_to_quad(record.mover['seek_position'])
         p.pack_ndmp_notify_mover_paused_request(body)
-        stdlog.debug(body)
+        stdlog.debug('[%d] ' + repr(body), record.fileno)
         record.queue.put(p.get_buffer())

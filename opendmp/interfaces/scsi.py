@@ -1,10 +1,10 @@
 ''' SCSI Interface 
-                  This interface passes SCSI CDBs through to a SCSI device and 
-                  retrieve the resulting SCSI status. The DMA uses the SCSI 
-                  Interface to control locally attached tape library media changer. 
-                  Software on the DMA will construct SCSI CDBs and interprets the 
-                  returned status and data. The SCSI Interface MAY also exploit 
-                  special features of SCSI backup devices. 
+This interface passes SCSI CDBs through to a SCSI device and 
+retrieve the resulting SCSI status. The DMA uses the SCSI 
+Interface to control locally attached tape library media changer. 
+Software on the DMA will construct SCSI CDBs and interprets the 
+returned status and data. The SCSI Interface MAY also exploit 
+special features of SCSI backup devices. 
 '''
 import os, traceback
 from tools.log import Log; stdlog = Log.stdlog

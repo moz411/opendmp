@@ -74,11 +74,13 @@ class connect():
                 record.mover['fd'] = ip.get_data_conn((record.data['host'],record.data['port']))
                 record.mover['host'], record.mover['port'] = record.mover['fd'].getsockname()
                 record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
-                stdlog.info('MOVER> Connected to ' + repr((record.data['host'],record.data['port'])))
+                stdlog.info('[%d] Connected to ' + repr((record.data['host'],record.data['port'])),
+                            record.fileno)
             except OSError as e:
                 record.error = const.NDMP_MOVER_HALT_CONNECT_ERROR
-                stdlog.error('MOVER> Cannot connect to ' + 
-                             repr((record.data['host'],record.data['port'])) + ': ' + repr(e))
+                stdlog.error('[%d] Cannot connect to ' + 
+                             repr((record.data['host'],record.data['port'])) +
+                              ': ' + repr(e), record.fileno)
         elif(record.b.addr.addr_type == const.NDMP_ADDR_IPC):
             # TODO: implement NDMP_ADDR_IPC
             pass
@@ -88,10 +90,11 @@ class connect():
                 record.mover['fd'] = ip.get_data_conn(record.b.addr.tcp_addr)
                 record.mover['host'], record.mover['port'] = record.mover['fd'].getsockname()
                 record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
-                stdlog.info('MOVER> Connected to ' + repr(record.b.addr.tcp_addr))
+                stdlog.info('[%d] Connected to ' + repr(record.b.addr.tcp_addr), record.fileno)
             except Exception as e:
                 record.error = const.NDMP_MOVER_HALT_CONNECT_ERROR
-                stdlog.error('MOVER> Cannot connect to ' + repr(record.b.addr.tcp_addr) + ': ' + repr(e))
+                stdlog.error('[%d] Cannot connect to ' + repr(record.b.addr.tcp_addr) + 
+                             ': ' + repr(e), record.fileno)
             
             
     def reply_v4(self, record):
@@ -154,7 +157,7 @@ class listen(asyncore.dispatcher):
     request_v3 = request_v4
     
     def handle_accepted(self, connection, address):
-        stdlog.info('MOVER> Connection from ' + repr(address))
+        stdlog.info('[%d] Connection from ' + repr(address), self.record.fileno)
         host,self.record.mover['port'] = address
         self.record.mover['host'] = ip.ip_address(host)._ip_int_from_string(host)
         # Start an asyncore Consumer for this connection
@@ -206,7 +209,7 @@ class get_state():
         else:
             record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
         
-        stdlog.info('MOVER> Bytes moved: ' + repr(bytes_moved))
+        stdlog.info('[%d] Bytes moved: ' + repr(bytes_moved), record.fileno)
         #stdlog.info('MOVER> Bytes left to read: ' + repr(record.mover['bytes_left_to_read']))
 
     reply_v3 = reply_v4

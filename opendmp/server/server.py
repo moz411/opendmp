@@ -16,10 +16,11 @@ class Server(asyncore.dispatcher):
         self.connection = connection
         # Create a new Record for each connection
         self.record = Record()
+        self.record.fileno = self._fileno
         # Notify the DMA of the connection
         notify.connection_status().post(self.record)
         
-    def writeable(self):
+    def writable(self):
         if self.record.queue.qsize() > 0:
             # An answer is in the record's queue
             return True
@@ -48,13 +49,12 @@ class Server(asyncore.dispatcher):
         self.record.run_task(message)
 
     def handle_error(self):
-        stdlog.info('Connection with ' + repr(self.addr) + ' failed')
+        stdlog.info('[%d] Connection with ' + repr(self.addr) + ' had an error', self._fileno)
         stdlog.debug(traceback.print_exc())
-        self.record.close()
-        self.close() # connection failed, shutdown
+        self.handle_close()
         
     def handle_close(self):
-        stdlog.info('Connection with ' + repr(self.addr) + ' closed')
+        stdlog.info('[%d] Connection with ' + repr(self.addr) + ' closed', self._fileno)
         self.record.close()
         self.close()
     
@@ -69,3 +69,9 @@ class Server(asyncore.dispatcher):
             data += newdata
             n -= count
         return data
+    
+    def log(self, message):
+        stdlog.debug('[%d] ' + message, self._fileno)
+
+    def log_info(self, message, type='info'):
+        stdlog.info('[%d] ' + message, self._fileno)

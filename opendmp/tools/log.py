@@ -1,10 +1,16 @@
 import logging.handlers
 from tools.config import Config; cfg = Config.cfg
 
+
+class NDMPLoggerAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        return "message->" + msg.upper(), kwargs
+
 class Log:
     '''Initialize the opendmp logging system.
     Actually print both to stdout and in a LOGFILE defined in opendmp.conf
     '''
+
     stdlog = logging.getLogger('stdlog')
     
     def getlog(self):
@@ -26,7 +32,7 @@ class Log:
             print('Cannot write to ' + cfg['LOGFILE'] + ', (are you root?)')
         
         if self.stdlog.isEnabledFor(logging.DEBUG):
-            formatter = logging.Formatter('%(module)s %(funcName)s: %(message)s')
+            formatter = logging.Formatter('%(message)s')
         else:
             formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', "%Y-%m-%d %H:%M:%S")
         

@@ -17,10 +17,12 @@ class Data(asyncore.dispatcher):
         self.record = record
         self.errmsg = None
         if record.data['operation'] == const.NDMP_DATA_OP_BACKUP:
-            stdlog.info('Starting backup of ' + self.record.data['env']['FILESYSTEM'])
+            stdlog.info('[%d] Starting backup of ' + self.record.data['env']['FILESYSTEM'],
+                        record.fileno)
             self.file = open(self.record.data['bu_fifo'],'rb')
         else:
-            stdlog.info('Starting recover of ' + self.record.data['env']['FILESYSTEM'])
+            stdlog.info('[%d] Starting recover of ' + self.record.data['env']['FILESYSTEM'],
+                        record.fileno)
             self.file = open(self.record.data['bu_fifo'],'wb')
             nt.data_read().post(self.record)
     
@@ -48,13 +50,13 @@ class Data(asyncore.dispatcher):
     def handle_error(self):
         self.record.error = const.NDMP_ILLEGAL_STATE_ERR
         self.record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
-        stdlog.error('DATA> Operation failed')
+        stdlog.error('[%d] Data operation failed', record.fileno)
         
     def handle_close(self):
         try:
             self.record.data['process'].wait(5)
         except TimeoutExpired:
-            stdlog.error('killing bu process')
+            stdlog.error('[%d] killing bu process', record.fileno)
             self.record.data['process'].kill()
             self.record.data['process'].wait()
         try:
@@ -74,7 +76,7 @@ class Data(asyncore.dispatcher):
                             self.record.data['bu_fifo']]:
                 if tmpfile is not None: ut.clean_file(tmpfile)
         except (OSError, ValueError, AttributeError) as e:
-            stdlog.error('DATA> close operation failed:' + repr(e))
+            stdlog.error('[%d] Data close operation failed:' + repr(e), self.record.fileno)
             
         self.record.data['state'] = const.NDMP_DATA_STATE_HALTED
         self.record.data['operation'] = const.NDMP_DATA_OP_NOACTION
@@ -83,7 +85,8 @@ class Data(asyncore.dispatcher):
         else:
             self.record.error = const.NDMP_ILLEGAL_STATE_ERR
             self.record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
-        stdlog.info('DATA> BU finished status ' + repr(self.record.data['retcode']))
+        stdlog.info('[%d] BU finished status ' + repr(self.record.data['retcode']),
+                    self.record.fileno)
             
     def update_dumpdate(self):            
         try:
@@ -93,4 +96,10 @@ class Data(asyncore.dispatcher):
             ut.write_dumpdates('.'.join([cfg['DUMPDATES'], self.record.data['bu_type']]),
                                self.record.data['dumpdates'])
         except (OSError, ValueError, UnboundLocalError) as e:
-            stdlog.error('update dumpdate failed' + repr(e))
+            stdlog.error('[%d] update dumpdate failed' + repr(e), self.record.fileno)
+            
+    def log(self, message):
+        stdlog.debug('[%d] ' + message, self.record.fileno)
+
+    def log_info(self, message, type='info'):
+        stdlog.info('[%d] ' + message, self.record.fileno)

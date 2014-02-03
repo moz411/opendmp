@@ -12,9 +12,10 @@ class Fh(asyncore.file_dispatcher):
         self.record = record
         self.file = open(self.record.fh['history'], mode='rb')
         asyncore.file_dispatcher.__init__(self, self.file)
-        stdlog.info('Starting File History of ' + self.record.data['env']['FILESYSTEM'])
+        stdlog.info('[%d] Starting File History of ' + self.record.data['env']['FILESYSTEM'],
+                    record.fileno)
         
-    def writeable(self):
+    def writable(self):
         return False
         
     def readeable(self):
@@ -37,4 +38,10 @@ class Fh(asyncore.file_dispatcher):
                 fh.add_file().post(self.record)
         self.close()
         ut.clean_file(self.record.fh['history'])
-        stdlog.info('File History operation finished')
+        stdlog.info('[%d] File History operation finished', self.record.fileno)
+
+    def log(self, message):
+        stdlog.debug('[%d] Fh ' + message, self.record.fileno)
+
+    def log_info(self, message, type='info'):
+        stdlog.info('[%d] Fh ' + message, self.record.fileno)

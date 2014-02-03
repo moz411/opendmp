@@ -32,14 +32,15 @@ class connect(asyncore.dispatcher):
             self.record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
             self.record.data['host'], self.record.data['port'] = self.socket.getpeername()
             self.record.data['peer'] = self.socket
-            stdlog.info('DATA> Connected to ' + self.record.data['host'] + ': ' + repr(self.record.data['port']))
+            stdlog.info('[%d] Connected to ' + self.record.data['host'] +
+                         ': ' + repr(self.record.data['port']), record.fileno)
             
     def reply_v4(self, record):
         pass
     
     def handle_error(self):
         self.record.error = const.NDMP_DATA_HALT_CONNECT_ERROR
-        stdlog.error('DATA> Connection failed')
+        stdlog.error('[%d] Connection failed', record.fileno)
 
     request_v3 = request_v4
     reply_v3 = reply_v4
@@ -99,7 +100,7 @@ class listen():
     request_v3 = request_v4
     
     def handle_accepted(self, connection, address):
-        stdlog.info('DATA> Connection from ' + repr(address))
+        stdlog.info('[%d] Connection from ' + repr(address), record.fileno)
         # Start an asyncore Consumer for this connection
         Data(connection, self.record)
         self.record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
@@ -115,13 +116,14 @@ class start_backup():
         record.data['operation'] = const.NDMP_DATA_OP_BACKUP
         
         if(record.data['state'] != const.NDMP_DATA_STATE_CONNECTED):
-            stdlog.error('Illegal state for start_backup: ' + const.ndmp_data_state[record.data['state']])
+            stdlog.error('[%d] Illegal state for start_backup: ' + 
+                         const.ndmp_data_state[record.data['state']], record.fileno)
             record.error = const.NDMP_ILLEGAL_STATE_ERR
             return
         # TODO: implement a real plugin system
         elif not((c.system in c.Unix and bu_type in ['tar', 'dump']) or
            (c.system in c.Windows and bu_type in ['wbadmin', 'ntbackup'])):
-            stdlog.error('BUTYPE ' + bu_type + ' not supported')
+            stdlog.error('[%d] BUTYPE ' + bu_type + ' not supported', record.fileno)
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         else:
@@ -149,18 +151,20 @@ class start_backup():
         try:
             assert(record.data['env']['FILESYSTEM'] != None)
         except (KeyError, AssertionError):
-            stdlog.error('variable FILESYSTEM does not exists')
+            stdlog.error('[%d] variable FILESYSTEM does not exists', record.fileno)
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         try:
             assert(os.path.exists(record.data['env']['FILESYSTEM']))
         except (KeyError, AssertionError):
-            stdlog.error('FILESYSTEM ' + record.data['env']['FILESYSTEM'] + ' does not exists')
+            stdlog.error('[%d] FILESYSTEM ' + record.data['env']['FILESYSTEM'] +
+                          ' does not exists', record.fileno)
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         
         # Generate the command line
         command_line = Bu.backup(record)
+        stdlog.debug('[%d]', record.fileno)
         stdlog.debug(command_line)
         
         # Launch the backup process
@@ -196,13 +200,14 @@ class start_recover():
         record.data['operation'] = const.NDMP_DATA_OP_RECOVER
         
         if(record.data['state'] != const.NDMP_DATA_STATE_CONNECTED):
-            stdlog.error('Illegal state for start_backup: ' + const.ndmp_data_state[record.data['state']])
+            stdlog.error('[%d] Illegal state for start_backup: ' + 
+                         const.ndmp_data_state[record.data['state']], record.fileno)
             record.error = const.NDMP_ILLEGAL_STATE_ERR
             return
         # TODO: implement a real plugin system
         elif not((c.system in c.Unix and bu_type in ['tar', 'dump']) or
            (c.system in c.Windows and bu_type in ['wbadmin', 'ntbackup'])):
-            stdlog.error('BUTYPE ' + bu_type + ' not supported')
+            stdlog.error('[%d] BUTYPE ' + bu_type + ' not supported', record.fileno)
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         else:
@@ -230,13 +235,13 @@ class start_recover():
         try:
             assert(record.data['env']['FILESYSTEM'] != None)
         except (KeyError, AssertionError) as e:
-            stdlog.error('variable FILESYSTEM does not exist')
+            stdlog.error('[%d] variable FILESYSTEM does not exist', record.fileno)
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         try:
             assert(os.path.exists(record.data['nlist']['destination_dir']))
         except (KeyError, AssertionError) as e:
-            stdlog.error('destination directory does not exist')
+            stdlog.error('[%d] destination directory does not exist', record.fileno)
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
             
@@ -251,7 +256,7 @@ class start_recover():
                         'fh_info': ut.quad_to_long_long(record.b.nlist[0].fh_info)
                         }
         except IndexError:
-            stdlog.error('Invalid informations sent by DMA')
+            stdlog.error('[%d] Invalid informations sent by DMA', record.fileno)
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         
@@ -259,10 +264,10 @@ class start_recover():
         try:
             command_line = Bu.recover(record)
         except (OSError, AttributeError, KeyError) as e:
-            stdlog.error(e)
+            stdlog.error('[%d] ' + e, record.fileno)
             record.error = const.NDMP_NOT_SUPPORTED_ERR
             return
-        stdlog.debug(command_line)
+        stdlog.debug('[%d] ' + command_line, record.fileno)
         
         # Launch the backup asyncore Consumer
         Data(record)
@@ -334,7 +339,7 @@ class get_state():
         record.b.read_offset = ut.long_long_to_quad(0)
         record.b.read_length = ut.long_long_to_quad(0)
             
-        stdlog.info('DATA> Bytes processed: ' + repr(sent))
+        stdlog.info('[%d] Bytes processed: ' + repr(sent), record.fileno)
         #stdlog.info('DATA> Bytes remaining: ' + repr(remain))
 
     reply_v3 = reply_v4
@@ -368,9 +373,10 @@ class stop():
                 record.data['process'].kill()
                 record.data['process'].wait()
             except OSError as e:
-                stdlog.error('Cannot stop process ' + repr(record.data['process'].pid) + ':' + e.strerror)
+                stdlog.error('[%d] Cannot stop process ' + repr(record.data['process'].pid) +
+                              ':' + e.strerror, record.fileno)
             except AttributeError:
-                stdlog.info('Process already stopped')
+                stdlog.info('[%d] Process already stopped', record.fileno)
             record.data['halt_reason'] = const.NDMP_DATA_HALT_NA
             record.data['state'] = const.NDMP_DATA_STATE_IDLE
             record.data['operation'] = const.NDMP_DATA_OP_NOACTION
@@ -390,9 +396,10 @@ class abort():
                 record.data['process'].kill()
                 record.data['process'].wait()
             except OSError as e:
-                stdlog.error('Cannot stop process ' + repr(record.data['process'].pid) + ':' + e.strerror)
+                stdlog.error('[%d] Cannot stop process ' + repr(record.data['process'].pid) +
+                              ':' + e.strerror, record.fileno)
             except AttributeError:
-                stdlog.error('Process already stopped')
+                stdlog.error('[%d] Process already stopped', record.fileno)
             
             record.data['halt_reason'] = const.NDMP_DATA_HALT_ABORTED
             record.data['state'] = const.NDMP_DATA_STATE_HALTED

@@ -71,7 +71,7 @@ class NDMPServer(asyncore.dispatcher):
         Server(connection)
         
     # Avoid 100% CPU usage with asyncore loop
-    def writeable(self):
+    def writable(self):
         return False
     
     def readable(self):
@@ -81,6 +81,12 @@ class NDMPServer(asyncore.dispatcher):
                 return True
         time.sleep(0.01)
         return True
+    
+    def log(self, message):
+        stdlog.debug(message)
+
+    def log_info(self, message, type='info'):
+        stdlog.info(message)
 
 class NDMPDaemon(Daemon):
     def run(self):

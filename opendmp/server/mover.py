@@ -34,7 +34,8 @@ class Mover(asyncore.dispatcher):
             self.record.device.write(self.record)
             self.record.mover['bytes_moved'] += len(self.record.device.data)
         except (OSError, IOError) as e:
-            stdlog.error(self.record.device.path + ': ' + e.strerror)
+            stdlog.error('[%d] ' + self.record.device.path + ': ' + e.strerror,
+                          self.record.fileno)
             if(e.errno == errno.EACCES):
                 self.record.error = const.NDMP_WRITE_PROTECT_ERR
             elif(e.errno == errno.ENOENT):
@@ -46,7 +47,8 @@ class Mover(asyncore.dispatcher):
             elif(e.errno == errno.ENOSPC):
                 self.record.error = const.NDMP_EOM_ERR
                 self.record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
-                stdlog.info('MOVER> pausing status ' + repr(const.ndmp_error[self.record.error]))
+                stdlog.info('[%d] Mover pausing status ' + repr(const.ndmp_error[self.record.error]),
+                            self.record.fileno)
                 self.record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
                 self.record.queue.put(nt.mover_paused().post(self.record))
             else:
@@ -57,7 +59,8 @@ class Mover(asyncore.dispatcher):
             self.record.device.read(self.record)
             self.record.mover['bytes_moved'] += self.send(self.record.device.data)
         except (OSError, IOError) as e:
-            stdlog.error(self.record.device.path + ': ' + e.strerror)
+            stdlog.error('[%d] ' + self.record.device.path + ': ' + e.strerror,
+                         self.record.fileno)
             if(e.errno == errno.EACCES):
                 self.record.error = const.NDMP_WRITE_PROTECT_ERR
             elif(e.errno == errno.ENOENT):
@@ -69,20 +72,28 @@ class Mover(asyncore.dispatcher):
             elif(e.errno == errno.ENOSPC):
                 self.record.error = const.NDMP_EOM_ERR
                 self.record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
-                stdlog.info('MOVER> pausing status ' + repr(const.ndmp_error[self.record.error]))
+                stdlog.info('[%d] Mover pausing status ' + repr(const.ndmp_error[self.record.error]),
+                            self.record.fileno)
                 self.record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
                 self.record.queue.put(nt.mover_paused().post(self.record))
             else:
                 self.record.error = const.NDMP_IO_ERR
 
     def handle_error(self):
-        stdlog.info('MOVER> Connection with ' + repr(self.addr) + ' failed')
+        stdlog.info('[%d] Mover connection with ' + repr(self.addr) + ' failed', self.record.fileno)
         self.record.mover['halt_reason'] = const.NDMP_MOVER_HALT_INTERNAL_ERROR
         self.handle_close() # connection failed, shutdown
         
     def handle_close(self):
-        stdlog.info('MOVER> Connection with ' + repr(self.addr) + ' closed')
+        stdlog.info('[%d] Mover connection with ' + repr(self.addr) + ' closed', self.record.fileno)
         self.close()
         self.record.queue.put(nt.mover_halted().post(self.record))
-        stdlog.info('MOVER> closing status ' + repr(const.ndmp_error[self.record.error]))
+        stdlog.info('[%d] Mover closing status ' + repr(const.ndmp_error[self.record.error]),
+                    self.record.fileno)
         self.record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
+        
+    def log(self, message):
+        stdlog.debug('[%d] ' + message, self.record.fileno)
+
+    def log_info(self, message, type='info'):
+        stdlog.info('[%d] ' + message, self.record.fileno)
