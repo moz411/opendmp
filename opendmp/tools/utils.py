@@ -72,8 +72,7 @@ def add_hctl_linux(record):
         raise
     return (controller, target, lun)
 
-def add_filesystem_unix(line, local):
-    from bu import tar as bu
+def add_filesystem_unix(line, local, plugins):
     fs = ndmp_fs_info_v4()
     result = line.split()
     fs_physical_device = result[0]
@@ -92,7 +91,10 @@ def add_filesystem_unix(line, local):
     if (cfg['EMULATE_NETAPP'] == 'True'):
         avail = b'dump'
     else:
-        avail = bu.info.butype_name
+        avail = []
+        for bu in plugins:
+            if c.system in bu.ostype:
+                avail.append(bu.butype_info.butype_name)
     fs.invalid = 0
     fs.fs_type = fs_type.encode()
     fs.fs_logical_device = fs_logical_device.encode()
@@ -104,8 +106,8 @@ def add_filesystem_unix(line, local):
     fs.used_inodes = ndmp_u_quad(high=0,low=f_files-f_ffree)
     fs.fs_env = [ndmp_pval(name=b'LOCAL', value=local.encode()),
                  ndmp_pval(name=b'TYPE', value=fs_type.encode()),
-                 ndmp_pval(name=b'AVAILABLE_BACKUP', value=avail),
-                 ndmp_pval(name=b'AVAILABLE_RECOVERY ', value=avail)]
+                 ndmp_pval(name=b'AVAILABLE_BACKUP', value=b','.join(avail)),
+                 ndmp_pval(name=b'AVAILABLE_RECOVERY', value=b','.join(avail))]
     fs.fs_status = b'online'
     return fs
 

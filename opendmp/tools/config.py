@@ -24,7 +24,6 @@ class Config:
                         'EMULATE_ISILON': 'False'
                         }
     cfg = config['DEFAULT']
-    threads = []
     
     (system, hostname, release, version, machine, processor) = platform.uname()
     (hostname, aliaslist, addresslist) = socket.gethostbyaddr(socket.gethostname())

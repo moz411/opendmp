@@ -3,6 +3,7 @@ from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const, ndmp_type as type
 from tools import utils as ut
+from tools import plugins
 from xdrlib import Error as XDRError
 from xdr.ndmp_pack import NDMPPacker, NDMPUnpacker
 
@@ -25,6 +26,8 @@ class Record():
         self.device = None
         self.p = NDMPPacker()
         self.u = NDMPUnpacker(b'None')
+        self.bu_plugins = plugins.load_plugins('bu')
+        self.extensions = plugins.load_plugins('extensions')
         
         self.log = {'type': const.NDMP_LOG_NORMAL,
                'id': 0,

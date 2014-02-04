@@ -63,20 +63,11 @@ class get_butype_info():
         Server and the capability of each supported backup type.'''
     
     def reply_v4(self, record):
-        # TODO: implement a real plugin system
-        
         record.b.butype_info = []
-        if(c.system in c.Unix):
-            from bu import tar as bu
-            info = bu.info
-            if (cfg['EMULATE_NETAPP'] == 'True'):
-                info.butype_name = b'dump'
-            record.b.butype_info.append(bu.info)
-        elif(c.system == 'Windows'):
-            if(c.release >= 7):
-                record.b.butype_info.append(bu.wbadmin)
-            else:
-                record.b.butype_info.append(bu.ntbackup)
+        # Load the available BUs as plugins
+        for bu in record.bu_plugins:
+            if c.system in bu.ostype:
+                record.b.butype_info.append(bu.butype_info)
         
     def mask(self, v):
         return bin(v <<32)
@@ -94,12 +85,12 @@ class get_fs_info():
                 lines, stderr = Popen(['mount','-t','zfs,ufs,gfs,reiserfs,ext2,ext3,ext4'], 
                                   stdout=PIPE, stderr=PIPE).communicate()
                 for line in lines.splitlines():
-                    fs = ut.add_filesystem_unix(line.decode(), local='y') # local fs
+                    fs = ut.add_filesystem_unix(line.decode(), 'y', record.bu_plugins) # local fs
                     if fs: record.b.fs_info.append(fs)
                 lines, stderr = Popen(['mount','-t','nfs,smbfs,cifs,vboxsf,vmfs,fuse'], 
                               stdout=PIPE, stderr=PIPE).communicate()
                 for line in lines.splitlines():
-                    fs = ut.add_filesystem_unix(line.decode(), local='n') # remote fs
+                    fs = ut.add_filesystem_unix(line.decode(), 'n', record.bu_plugins) # remote fs
                     if fs: record.b.fs_info.append(fs)
             except OSError:
                 stdlog.error('[%d] ' + stderr, record.fileno)

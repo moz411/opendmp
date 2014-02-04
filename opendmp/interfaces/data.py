@@ -6,7 +6,7 @@ on the format of the backup data other than it MUST be a stream
 of data that can be written to the tape device. 
 '''
 from tools.log import Log; stdlog = Log.stdlog
-from tools.config import Config; cfg = Config.cfg; c = Config; threads = Config.threads
+from tools.config import Config; cfg = Config.cfg; c = Config
 import os, subprocess, shlex, time, socket, asyncore
 from server.data import Data
 from server.fh import Fh
@@ -112,7 +112,7 @@ class start_backup():
        peer Data Server over the previously established data connection.'''
     
     def request_v4(self, record):
-        bu_type = bytes.decode(record.b.bu_type).strip()
+        bu_type = record.b.bu_type
         record.data['operation'] = const.NDMP_DATA_OP_BACKUP
         
         if(record.data['state'] != const.NDMP_DATA_STATE_CONNECTED):
@@ -120,20 +120,22 @@ class start_backup():
                          const.ndmp_data_state[record.data['state']], record.fileno)
             record.error = const.NDMP_ILLEGAL_STATE_ERR
             return
-        # TODO: implement a real plugin system
-        elif not((c.system in c.Unix and bu_type in ['tar', 'dump']) or
-           (c.system in c.Windows and bu_type in ['wbadmin', 'ntbackup'])):
-            stdlog.error('[%d] BUTYPE ' + bu_type + ' not supported', record.fileno)
+        butype_names = []
+        for bu in record.bu_plugins:
+            butype_names.append(bu.butype_info.butype_name)
+        if bu_type not in butype_names:
+            stdlog.error('[%d] BUTYPE ' + bytes(bu_type).decode() + 
+                         ' not supported', record.fileno)
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         else:
-            # TODO: implement a real plugin system
             record.data['bu_type'] = bu_type
-            from bu import tar
-            Bu = tar.Bu()
+            for bu in record.bu_plugins:
+                if bu_type == bu.butype_info.butype_name:
+                    Bu = bu()
 
         # Extract all env variables, overwrite default_env
-        for pval in tar.info.default_env:
+        for pval in Bu.butype_info.default_env:
             name = pval.name.decode().strip()
             value = pval.value.decode().strip()
             record.data['env'][name] =  value
