@@ -4,7 +4,7 @@ finding python files, loading them, and then searching them for any classes that
 subclasses of the class you want. When it gets done, it returns them.
 '''
 from tools.log import Log; stdlog = Log.stdlog
-import inspect, os, sys, importlib
+import inspect, os, importlib
 
 class Plugins:
     pass

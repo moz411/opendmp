@@ -1,77 +1,93 @@
-'''This module implements the base socket server that receive NDMP request
-and fork a subprocess'''
+'''This module implements the base server that receive NDMP request and prepare response.
+Mostly from https://code.google.com/p/tulip/source/browse/examples/simple_tcp_server.py'''
 
-
+import struct, asyncio, traceback
 from tools.config import Config; cfg = Config.cfg; c = Config;
 from tools.log import Log; stdlog = Log.stdlog
-import struct, traceback
 from xdr.record import Record
 from interfaces import notify
-import asyncore
 
-class Server(asyncore.dispatcher):
+class NDMPServer:
     
-    def __init__(self, connection):
-        asyncore.dispatcher.__init__(self, connection)
-        self.connection = connection
+    def __init__(self):
+        self.loop = asyncio.get_event_loop()
+        self.connections = {}
+        
+    def start(self):
+        """
+        Starts the TCP server, so that it listens on port 10000.
+
+        For each client that connects, the accept_dma method gets
+        called.  This method runs the loop until the server sockets
+        are ready to accept connections.
+        """
+        handler = asyncio.start_server(self.accept,cfg['HOST'], int(cfg['PORT']))
+        self.server = self.loop.run_until_complete(handler)
+        stdlog.info('NDMP Server listening on %s:%d', cfg['HOST'], int(cfg['PORT']))
+        self.loop.run_forever()
+        
+                
+    def stop(self):
+        """
+        Stops the TCP server, i.e. closes the listening socket(s).
+        This method runs the loop until the server sockets are closed.
+        """
+        if self.server is not None:
+            self.server.close()
+            self.loop.run_until_complete(self.server.wait_closed())
+            self.server = None
+                        
+    def accept(self, reader, writer):
+        '''
+        This method accepts a new DMA connection and creates two Tasks
+        to handle this connection.
+        A notification is immediately sent to the DMA
+        '''
         # Create a new Record for each connection
         self.record = Record()
-        self.record.fileno = self._fileno
+        
         # Notify the DMA of the connection
         notify.connection_status().post(self.record)
         
-    def writable(self):
-        if self.record.queue.qsize() > 0:
-            # An answer is in the record's queue
-            return True
+        # start a new Task to handle this specific client connection
+        asyncio.Task(self.handle_write(writer))
+        read = asyncio.Task(self.handle_read(reader))
+        
+        # Add tasks and transports to the dict for reference
+        self.connections[read] = (reader, writer)
+        
+        def handle_close(task):
+            stdlog.info('Connection closed')
+            self.record.close()
+            del self.connections[task]
+            
+        # Add a handler to terminate the connection
+        if read:
+            read.add_done_callback(handle_close)
 
-    def handle_write(self):
+    @asyncio.coroutine
+    def handle_read(self, reader):
+        print('read')
+        try:
+            msglen = yield from reader.readexactly(4)
+            print(msglen)
+            count = struct.unpack('>L', msglen)[0]
+            message = yield from reader.read(count)
+        except asyncio.IncompleteReadError:
+            stdlog.error('Incomplete message received')
+        else:
+            yield from self.record.run_task(message)
+        
+    @asyncio.coroutine        
+    def handle_write(self, writer):
+        print(self.record.queue.qsize())
         while not self.record.queue.empty():
             message = self.record.queue.get()
-            if message:
-                """Prepare and send messages using record marking standard"""
-                x = len(message) | 0x80000000
-                header = struct.pack('>L', x | len(message))
-                self.send(header + message)
+            x = len(message) | 0x80000000
+            header = struct.pack('>L', x | len(message))
+            try:
+                yield from writer.write(header + message)
+            except TypeError:
+                pass
 
-    def handle_read(self):
-        """Receive and unpack message using record marking standard"""
-        last = False
-        message = b''
-        while not last:
-            rec_mark = self._recv_all(4)
-            if not rec_mark: return
-            count = struct.unpack('>L', rec_mark)[0]
-            last = count & 0x80000000
-            if last:
-                count &= 0x7fffffff
-            message += self._recv_all(count)
-        self.record.run_task(message)
-
-    def handle_error(self):
-        stdlog.info('[%d] Connection with ' + repr(self.addr) + ' had an error', self._fileno)
-        stdlog.debug(traceback.print_exc())
-        self.handle_close()
-        
-    def handle_close(self):
-        stdlog.info('[%d] Connection with ' + repr(self.addr) + ' closed', self._fileno)
-        self.record.close()
-        self.close()
-    
-    def _recv_all(self, n):
-        """Receive n bytes, or terminate connection"""
-        data = b''
-        while n > 0:
-            newdata = self.recv(n)
-            count = len(newdata)
-            if not count:
-                return
-            data += newdata
-            n -= count
-        return data
-    
-    def log(self, message):
-        stdlog.debug('[%d] ' + message, self._fileno)
-
-    def log_info(self, message, type='info'):
-        stdlog.info('[%d] ' + message, self._fileno)
+asyncio.Protocol

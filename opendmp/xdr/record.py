@@ -1,4 +1,4 @@
-import struct, time, random, hashlib, traceback, queue
+import struct, time, random, hashlib, traceback, queue, asyncio
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const, ndmp_type as type
@@ -125,6 +125,7 @@ class Record():
         return '%s' % ', '.join(out)
     __str__ = __repr__   
     
+    @asyncio.coroutine
     def run_task(self, message):
         
         # First part: decode and execute the request
@@ -301,7 +302,8 @@ class Record():
         self.b = ut.Empty()
         self.message = b''
         self.p.reset()
-        
+    
+    @asyncio.coroutine    
     def close(self):
         # Kill BU process if any
         # Close device if any
