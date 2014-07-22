@@ -1,93 +1,68 @@
-'''This module implements the base server that receive NDMP request and prepare response.
-Mostly from https://code.google.com/p/tulip/source/browse/examples/simple_tcp_server.py'''
+'''This module implements the base socket server that receive NDMP request
+and fork a subprocess'''
 
-import struct, asyncio, traceback
+
 from tools.config import Config; cfg = Config.cfg; c = Config;
 from tools.log import Log; stdlog = Log.stdlog
+import struct, traceback, faulthandler, sys, asyncio
 from xdr.record import Record
 from interfaces import notify
 
-class NDMPServer:
-    
-    def __init__(self):
-        self.loop = asyncio.get_event_loop()
-        self.connections = {}
+def start_NDMPServer():
+    try:
+        loop = asyncio.get_event_loop()
+        coro = loop.create_server(NDMPServer, cfg['HOST'], int(cfg['PORT']))
+        server = loop.run_until_complete(coro)
+        stdlog.info('Start NDMP server on {}'.format(server.sockets[0].getsockname()))
         
-    def start(self):
-        """
-        Starts the TCP server, so that it listens on port 10000.
-
-        For each client that connects, the accept_dma method gets
-        called.  This method runs the loop until the server sockets
-        are ready to accept connections.
-        """
-        handler = asyncio.start_server(self.accept,cfg['HOST'], int(cfg['PORT']))
-        self.server = self.loop.run_until_complete(handler)
-        stdlog.info('NDMP Server listening on %s:%d', cfg['HOST'], int(cfg['PORT']))
-        self.loop.run_forever()
+        try:
+            loop.run_forever()
+        except KeyboardInterrupt:
+            stdlog.info("Exiting")
+        finally:
+            server.close()
+            loop.close()
+    except:
+        stdlog.debug('*'*60)
+        stdlog.debug(traceback.format_exc())
+        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+        stdlog.debug('*'*60)
         
-                
-    def stop(self):
-        """
-        Stops the TCP server, i.e. closes the listening socket(s).
-        This method runs the loop until the server sockets are closed.
-        """
-        if self.server is not None:
-            self.server.close()
-            self.loop.run_until_complete(self.server.wait_closed())
-            self.server = None
-                        
-    def accept(self, reader, writer):
-        '''
-        This method accepts a new DMA connection and creates two Tasks
-        to handle this connection.
-        A notification is immediately sent to the DMA
-        '''
+class NDMPServer(asyncio.Protocol):
+    MAX_LENGTH = 99999
+    recvd = b''
+    prefixLength = 4
+    structFormat = '>L'
+            
+    def connection_made(self, transport):
+        self.transport = transport
+        stdlog.info('Connection from ' + repr(self.transport.get_extra_info('peername')))
         # Create a new Record for each connection
         self.record = Record()
+        # Send the initial welcome message
+        task = asyncio.async(notify.connection_status().post(self.record))
+        task.add_done_callback(self.handle_write)
         
-        # Notify the DMA of the connection
-        notify.connection_status().post(self.record)
-        
-        # start a new Task to handle this specific client connection
-        asyncio.Task(self.handle_write(writer))
-        read = asyncio.Task(self.handle_read(reader))
-        
-        # Add tasks and transports to the dict for reference
-        self.connections[read] = (reader, writer)
-        
-        def handle_close(task):
-            stdlog.info('Connection closed')
-            self.record.close()
-            del self.connections[task]
+    def data_received(self, data):
+        '''Receive and unpack message using record marking standard'''
+        self.recvd = self.recvd + data
+        while len(self.recvd) >= self.prefixLength:
+            length = struct.unpack(self.structFormat, self.recvd[:self.prefixLength])[0]
+            message = self.recvd[self.prefixLength:length + self.prefixLength]
+            self.recvd = self.recvd[length + self.prefixLength:]
+            task = asyncio.async(self.record.run_task(message))
+            task.add_done_callback(self.handle_write)
             
-        # Add a handler to terminate the connection
-        if read:
-            read.add_done_callback(handle_close)
+    def connection_lost(self, exc):
+        stdlog.info(repr(self.transport.get_extra_info('peername')) + ' closed the connection')
+        self.record.close()
 
-    @asyncio.coroutine
-    def handle_read(self, reader):
-        print('read')
-        try:
-            msglen = yield from reader.readexactly(4)
-            print(msglen)
-            count = struct.unpack('>L', msglen)[0]
-            message = yield from reader.read(count)
-        except asyncio.IncompleteReadError:
-            stdlog.error('Incomplete message received')
-        else:
-            yield from self.record.run_task(message)
-        
-    @asyncio.coroutine        
-    def handle_write(self, writer):
-        print(self.record.queue.qsize())
-        while not self.record.queue.empty():
-            message = self.record.queue.get()
-            x = len(message) | 0x80000000
-            header = struct.pack('>L', x | len(message))
-            try:
-                yield from writer.write(header + message)
-            except TypeError:
-                pass
-
-asyncio.Protocol
+    def handle_write(self,task):
+        ''''Prepare and send messages using record marking standard'''
+        # Retrieve the formated NDMP message from the asyncore Task
+        data = task.result()
+        # Prepare the XDR header
+        x = len(data) | 0x80000000
+        header = struct.pack(self.structFormat, x | len(data))
+        # Send the message
+        self.transport.write(header + data)

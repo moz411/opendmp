@@ -1,4 +1,4 @@
-import os, configparser, platform, socket, traceback
+import os, configparser, platform, traceback
 from subprocess import Popen, PIPE
 
 class Config:
@@ -19,6 +19,7 @@ class Config:
                         'DATA_PORT_RANGE': '10001-10020',
                         'DATA_TIMEOUT': '0.1',
                         'DUMPDATES': '/etc/dumpdates',
+                        'FH_MAXLINES': '1000',
                         'EMULATE_NETAPP': 'False',
                         'EMULATE_CELERRA': 'False',
                         'EMULATE_ISILON': 'False'
@@ -26,7 +27,7 @@ class Config:
     cfg = config['DEFAULT']
     
     (system, hostname, release, version, machine, processor) = platform.uname()
-    (hostname, aliaslist, addresslist) = socket.gethostbyaddr(socket.gethostname())
+    #(hostname, aliaslist, addresslist) = socket.gethostbyaddr(socket.gethostname())
     
     vendor_name = 'GNU'
     product_name = 'opendmp'
@@ -71,6 +72,9 @@ class Config:
         if int(self.cfg['PORT']) < 1024 or int(self.cfg['PORT']) > 65535:
             print('Invalid value given for PORT, using default 10000')
             self.cfg['PORT'] = '10000'
+            
+        if not (os.path.exists(self.cfg['RUNDIR'])):
+            os.mkdir(self.cfg['RUNDIR'], mode=0o700)
 
         if (self.cfg['EMULATE_NETAPP'] == 'True'):
             vendor_name = 'Netapp'

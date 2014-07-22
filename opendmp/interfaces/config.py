@@ -1,7 +1,7 @@
 '''This interface allows the DMA to discover the configuration of the  NDMP Server.'''
 
 from tools.log import Log; stdlog = Log.stdlog
-from tools.config import Config; cfg = Config.cfg; c = Config 
+from tools.config import Config; cfg = Config.cfg; c = Config
 import os, re, traceback
 from subprocess import Popen, PIPE
 import xdr.ndmp_const as const
@@ -93,7 +93,7 @@ class get_fs_info():
                     fs = ut.add_filesystem_unix(line.decode(), 'n', record.bu_plugins) # remote fs
                     if fs: record.b.fs_info.append(fs)
             except OSError:
-                stdlog.error('[%d] ' + stderr, record.fileno)
+                stdlog.error(stderr)
                 stdlog.debug(traceback.print_exc())
                 record.error = const.NDMP_NOT_SUPPORTED_ERR
                 
@@ -110,7 +110,7 @@ class get_tape_info():
             scsi_tape_path = '/sys/class/scsi_tape'
             try: os.access(scsi_tape_path, os.R_OK) # there are tape drives available
             except OSError: 
-                stdlog.info('[%d] No tape device found', record.fileno)
+                stdlog.info('No tape device found')
                 
             for devname in os.listdir(scsi_tape_path):
                 if (re.match('nst[0-9]+$',devname)):
@@ -133,7 +133,7 @@ class get_scsi_info():
             try:
                 os.access(scsi_changer_path, os.R_OK)
             except OSError:
-                stdlog.info('[%d] No changer found', record.fileno)
+                stdlog.info('No changer found')
             for devname in (os.listdir(scsi_changer_path)): # ndmp_device_info
                 path = os.path.join(scsi_changer_path,devname,'device/scsi_generic')
                 for generic in (os.listdir(path)):
@@ -160,8 +160,7 @@ class get_ext_list():
             try:
                 exec('import extensions.'+ mod)
             except ImportError as e:
-                stdlog.error('[%d] Unable to load extension ' + 
-                             mod + ': ' + e, record.fileno)
+                stdlog.error('Unable to load extension ' + mod + ': ' + e)
                 next
             #exec('for extension in list(extensions for extensions in dir(extensions.' + mod ') if re.match(\'ndmp+\', extensions)):')
             #    print(extension)

@@ -11,7 +11,7 @@ and networks.
 __version__ = '1.0'
 
 
-import select, socket, threading
+import socket, threading, os, struct, fcntl
 from queue import Queue, Empty
 from tools.config import Config; cfg = Config.cfg; c = Config
 from tools.log import Log; stdlog = Log.stdlog
@@ -2097,61 +2097,57 @@ class IPv6Network(_BaseV6, _BaseNetwork):
         return (self.network_address.is_site_local and
                 self.broadcast_address.is_site_local)
 
-def get_local_ip():
-        '''Used to determine a local IP address (not loopback)
-        Used if DATA_IFACE is not defined in opendmp.conf
-        Need to be improved'''
-        def udp_listening_server():
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(('0.0.0.0', 8888))
-            s.setblocking(0)
-            while True:
-                result = select.select([s],[],[])
-                msg, address = result[0][0].recvfrom(1024)
-                msg = str(msg, 'UTF-8')
-                if msg == 'What is my LAN IP address?':
-                    break
-            queue.put(address)
 
-        queue = Queue()
-        thread = threading.Thread(target=udp_listening_server)
-        thread.queue = queue
-        thread.start()
-        s2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s2.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        s2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        waiting = True
-        while waiting:
-            s2.sendto(bytes('What is my LAN IP address?', 'UTF-8'), ('<broadcast>', 8888))
+def get_interface_ip(ifname):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return socket.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s',
+                            ifname[:15]))[20:24])
+
+def get_lan_ip():
+    ip = socket.gethostbyname(socket.gethostname())
+    if ip.startswith("127.") and os.name != "nt":
+        interfaces = [
+            "eth0",
+            "eth1",
+            "eth2",
+            "wlan0",
+            "wlan1",
+            "wifi0",
+            "ath0",
+            "ath1",
+            "ppp0",
+            ]
+        for ifname in interfaces:
             try:
-                address = queue.get(False)
-            except Empty:
+                ip = get_interface_ip(ifname)
+                break
+            except IOError:
                 pass
-            else:
-                waiting = False
-        return address[0]
-    
+    return ip
+
 def get_next_data_conn(loopback=False):
     '''return a socket bound to the next port available in
     DATA_PORT_RANGE'''
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.settimeout(int(cfg['DATA_TIMEOUT']))
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.setblocking(0)
     found = False
     try:
         if loopback:
             data_iface = '127.0.0.1'
-        else:
+        elif cfg['DATA_IFACE']:
             data_iface = cfg['DATA_IFACE']
-    except KeyError:
-        data_iface = get_local_ip()
+        else:
+            data_iface = get_lan_ip()
+    except (KeyError, struct.error):
+        data_iface = '127.0.0.1'
+        
     first, last = cfg['DATA_PORT_RANGE'].split('-')
     port = (x for x in range(int(first), int(last)))
     while not found:
         try:
             s.bind((data_iface,port.__next__()))
-            s.listen(1)
             found = True
         except socket.error as e:
             stdlog.error(e)

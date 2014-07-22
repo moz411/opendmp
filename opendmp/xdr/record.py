@@ -1,11 +1,12 @@
-import struct, time, random, hashlib, traceback, queue, asyncio
+import struct, time, random, hashlib, traceback
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-from xdr import ndmp_const as const, ndmp_type as type
+from xdr import ndmp_const as const, ndmp_type as types
 from tools import utils as ut
 from tools import plugins
 from xdrlib import Error as XDRError
 from xdr.ndmp_pack import NDMPPacker, NDMPUnpacker
+import asyncio
 
 class Record():
     '''This class will traverse the whole NDMP session, and keep
@@ -13,61 +14,51 @@ class Record():
     that is shared in the program'''
     
     def __init__(self):
-        self.fileno = 0
-        self.queue = queue.Queue()
+        self.loop = asyncio.get_event_loop()
         self.challenge = random.randint(0, 2**64).to_bytes(64, 'big')
-        self.h = type.ndmp_header()
+        self.h = types.ndmp_header()
         self.b = None
         self.error = const.NDMP_NO_ERR
-        self.server_sequence = 2
+        self.server_sequence = 1
         self.dma_sequence = 0
         self.protocol_version = cfg['PREFERRED_NDMP_VERSION']
         self.connected = False
         self.device = None
         self.p = NDMPPacker()
         self.u = NDMPUnpacker(b'None')
+        # Variables added for bu plugins
         self.bu_plugins = plugins.load_plugins('bu')
         self.extensions = plugins.load_plugins('extensions')
+        # Variables added for 'post' decorator
+        self.post_header = None
+        self.post_body = None
         
         self.log = {'type': const.NDMP_LOG_NORMAL,
                'id': 0,
                'entry': None
                }
     
-        self.data = {'type': None, 
-                'env': {}, 
+        self.data = {'type': None,
                 'state': const.NDMP_DATA_STATE_IDLE,
                 'operation': const.NDMP_DATA_OP_NOACTION,
                 'addr_type': const.NDMP_ADDR_LOCAL,
                 'halt_reason': const.NDMP_DATA_HALT_NA,
-                'fd': None,
-                'local_address': None,
-                'host': None,
-                'port': None,
-                'bu_fifo': None,
-                'stack_size': 10240,
-                'log': None,
-                'error': [],
-                'process': None,
-                'retcode': 255,
-                'filesystem': None,
-                'offset': 0,
-                'length': 2**64-1,
-                'file': None,
-                'recovery': {'status': None},
-                'dumpdates': {},
-                'stampfile': None,
-                'stats':  {'total': 0,
-                           'current': 0}}
+                'server': None,
+                'reader': None,
+                'writer': None,
+                'bytes_moved': 0,
+                'bu': None,
+                'fh': None}
         
         self.mover = {'mode': const.NDMP_MOVER_MODE_NOACTION,
                  'state': const.NDMP_MOVER_STATE_IDLE,
+                 'halt_reason': const.NDMP_MOVER_HALT_NA,
+                 'pause_reason': const.NDMP_MOVER_PAUSE_NA,
+                 'server': None,
                  'addr_type': None,
                  'host': None,
                  'port': None,
                  'peer': None,
-                 'halt_reason': const.NDMP_MOVER_HALT_NA,
-                 'pause_reason': const.NDMP_MOVER_PAUSE_NA,
                  'record_size': 0,
                  'record_num': 0,
                  'bytes_moved': 0,
@@ -77,8 +68,7 @@ class Record():
                  'window_offset': 0}
         
         self.fh = {'files': [],
-                  'history': None,
-                  'max_lines': 1000}
+                  'history': None}
         
         self.tape = {'path': None,
                     'data': None,
@@ -107,8 +97,8 @@ class Record():
             if (self.h.message in [ const.NDMP_MOVER_ABORT, const.NDMP_MOVER_CLOSE,
                                    const.NDMP_MOVER_CONNECT, const.NDMP_MOVER_CONTINUE,
                                    const.NDMP_MOVER_GET_STATE, const.NDMP_MOVER_LISTEN]):
-                out += ['%s' % const.ndmp_mover_state[self.mover['state']]]
-                out += ['%s' % const.ndmp_mover_mode[self.mover['mode']]]
+                out += ['ms=%s' % const.ndmp_mover_state[self.mover['state']]]
+                out += ['mo=%s' % const.ndmp_mover_mode[self.mover['mode']]]
             if (self.h.message in [ const.NDMP_TAPE_CLOSE, const.NDMP_TAPE_EXECUTE_CDB,
                                    const.NDMP_TAPE_GET_STATE, const.NDMP_TAPE_MTIO,
                                    const.NDMP_TAPE_OPEN, const.NDMP_TAPE_READ, 
@@ -136,9 +126,8 @@ class Record():
         
         if self.h.message in [const.NDMP_CONNECT_CLOSE, const.NDMP_SHUTDOWN]:
                     return
-                
         # debug
-        stdlog.debug('[%d] ' + repr(self), self.fileno)
+        stdlog.debug(repr(self))
         
         # Unpack body
         if(self.verify_sequence()):
@@ -161,13 +150,12 @@ class Record():
             self.body()
             
         # debug
-        stdlog.debug('[%d] ' + repr(self), self.fileno)
-        stdlog.debug('[%d] \t' + repr(self.b), self.fileno)
+        stdlog.debug(repr(self))
+        stdlog.debug('\t' + repr(self.b))
         stdlog.debug('')
         
-        # add the encoded answer to the message queue
-        self.queue.put(self.p.get_buffer())
-        
+        # return the encoded answer
+        return self.p.get_buffer()
         
     def body(self):
         """
@@ -187,16 +175,16 @@ class Record():
             exec('from ' + interface + ' import ' + func)
         except:
             self.error =  const.NDMP_NOT_SUPPORTED_ERR
-            stdlog.error('[%d] ' + message + '_reply not supported', self.fileno)
+            stdlog.error(message + '_reply not supported')
             stdlog.debug(traceback.print_exc())
             return
 
         if (self.h.message_type == const.NDMP_MESSAGE_REPLY):
             try:
-                exec('self.b = type.' + message + '_reply_' + self.protocol_version + '()')
+                exec('self.b = types.' + message + '_reply_' + self.protocol_version + '()')
             except NameError:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
-                stdlog.error('[%d] ' + message + '_reply not supported', self.fileno)
+                stdlog.error(message + '_reply not supported')
                 stdlog.debug(traceback.print_exc())
                 return
             
@@ -205,7 +193,7 @@ class Record():
                 exec(func + '().reply_' + self.protocol_version + '(self)')
             except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
-                stdlog.error('[%d] ' + message + '_reply not supported', self.fileno)
+                stdlog.error(message + '_reply not supported')
                 stdlog.debug(traceback.print_exc())
                 return
             
@@ -214,8 +202,8 @@ class Record():
                 exec('self.p.pack_' + message + '_reply_' + self.protocol_version +'(self.b)')
             except (TypeError, XDRError, AttributeError, NameError, struct.error):
                 self.error =  const.NDMP_XDR_ENCODE_ERR
-                stdlog.error('[%d] Error processing message ' + message+ '_reply_' + 
-                             self.protocol_version, self.fileno)
+                stdlog.error('Error processing message ' + message+ '_reply_' + 
+                             self.protocol_version)
                 stdlog.debug(traceback.print_exc())
                 
         elif (self.h.message_type == const.NDMP_MESSAGE_REQUEST and 
@@ -235,19 +223,19 @@ class Record():
                 #prepare unpack function
                 exec('self.b  = self.u.unpack_' + message + '_request_' + self.protocol_version +'()')
                 # debug
-                stdlog.debug('[%d] \t' + repr(self.b),self.fileno)
+                stdlog.debug('\t' + repr(self.b))
                 stdlog.debug('')
                 # run "request" function
                 exec(func + '().request_' + self.protocol_version +'(self)')
             except (TypeError, XDRError, AttributeError, EOFError):
                 self.error =  const.NDMP_XDR_DECODE_ERR
-                stdlog.error('[%d] Error processing message ' + message + '_request_' + 
-                             self.protocol_version, self.fileno)
+                stdlog.error('Error processing message ' + message + '_request_' + 
+                             self.protocol_version)
                 stdlog.debug(traceback.print_exc())
                 return
             except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
-                stdlog.error('[%d] ' + message + '_request not supported', self.fileno)
+                stdlog.error(message + '_request not supported')
                 stdlog.debug(traceback.print_exc())
                 return    
     
@@ -302,22 +290,20 @@ class Record():
         self.b = ut.Empty()
         self.message = b''
         self.p.reset()
-    
-    @asyncio.coroutine    
+        
     def close(self):
-        # Kill BU process if any
+        # Make sure every asyncore Consumer is terminated
+        for consumer in [self.data['server'], self.mover['server'],
+                         self.data['bu'], self.data['fh']]:
+            try:
+                consumer.handle_close()
+            except (OSError,AttributeError):
+                pass
+        
         # Close device if any
-        try:
-            self.data['process'].kill()
-            self.data['process'].wait()
-        except OSError as e:
-            stdlog.error('[%d] Cannot stop process ' + repr(self.data['process'].pid) +
-                          ':' + e.strerror, self.fileno)
-        except AttributeError:
-            pass
         try:
             self.device.close(self)
         except OSError as e:
             stdlog.error(e)
-        except AttributeError:
+        except (AttributeError, ValueError):
             pass

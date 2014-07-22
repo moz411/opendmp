@@ -9,23 +9,34 @@ notifies the DMA.
 '''
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-import asyncore, socket, traceback
 from tools import utils as ut, ipaddress as ip
 from xdr import ndmp_const as const, ndmp_type as type
-from server.mover import Mover
+from server.mover import MoverServer
+import asyncio
 
 
 class set_record_size():
     '''This request is used by the DMA to establish the record size used for
        mover-initiated tape read and write operations.'''
     
+    @ut.valid_state(const.NDMP_MOVER_STATE_IDLE)
     def request_v4(self, record):
-        if(record.mover['state'] not in [const.NDMP_MOVER_STATE_IDLE]):
+        record.mover['record_size'] = record.b.len
+        record.mover['window_length'] = 0
+        record.mover['window_offset'] = 0
+        
+        # Set the socket buffer to a multiple of recordsize, max 64k
+        if record.mover['record_size'] < 65536:
+            record.mover['bufsize'] = record.mover['record_size']
+        else:
+            from fractions import gcd
+            record.mover['bufsize'] = gcd(record.mover['record_size'],65536)
+        if record.mover['bufsize'] not in range(1024, 65536, 1024) :
+            stdlog.error('Tape block size not a multiple of 1024')
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         else:
-            record.mover['record_size'] = record.b.len
-            record.mover['window_length'] = 0
-            record.mover['window_offset'] = 0
+            stdlog.info('Will use a socket buffer of ' + 
+                        repr(record.mover['bufsize']))
 
     def reply_v4(self, record):
         pass
@@ -39,11 +50,9 @@ class set_window():
        stream that is accessible to the mover without intervening DMA tape
        manipulation.'''
     
+    @ut.valid_state([const.NDMP_MOVER_STATE_IDLE,const.NDMP_MOVER_STATE_PAUSED])
     def request_v4(self, record):
-        if(record.mover['state'] not in [const.NDMP_MOVER_STATE_IDLE,
-                                     const.NDMP_MOVER_STATE_PAUSED]):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        elif(record.mover['record_size'] == 0):
+        if(record.mover['record_size'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
         else:
             record.mover['window_offset'] = ut.quad_to_long_long(record.b.offset)
@@ -59,28 +68,15 @@ class connect():
     '''This request is used by the DMA to instruct the mover to establish a
        data connection to a Data Server or peer mover.'''
     
+    @ut.valid_state(const.NDMP_MOVER_STATE_IDLE)
     def request_v4(self, record):
         record.mover['mode'] = record.b.mode
         record.mover['addr'] = record.b.addr
-        if(record.mover['state'] not in [const.NDMP_MOVER_STATE_IDLE]):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-            return
-        elif(record.mover['record_size'] == 0):
+        if(record.mover['record_size'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
             return
-        elif(record.b.addr.addr_type == const.NDMP_ADDR_LOCAL):
-            record.mover['addr_type'] = const.NDMP_ADDR_LOCAL
-            try:
-                record.mover['fd'] = ip.get_data_conn((record.data['host'],record.data['port']))
-                record.mover['host'], record.mover['port'] = record.mover['fd'].getsockname()
-                record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
-                stdlog.info('[%d] Connected to ' + repr((record.data['host'],record.data['port'])),
-                            record.fileno)
-            except OSError as e:
-                record.error = const.NDMP_MOVER_HALT_CONNECT_ERROR
-                stdlog.error('[%d] Cannot connect to ' + 
-                             repr((record.data['host'],record.data['port'])) +
-                              ': ' + repr(e), record.fileno)
+        if(record.b.addr.addr_type == const.NDMP_ADDR_LOCAL):
+            pass
         elif(record.b.addr.addr_type == const.NDMP_ADDR_IPC):
             # TODO: implement NDMP_ADDR_IPC
             pass
@@ -90,12 +86,11 @@ class connect():
                 record.mover['fd'] = ip.get_data_conn(record.b.addr.tcp_addr)
                 record.mover['host'], record.mover['port'] = record.mover['fd'].getsockname()
                 record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
-                stdlog.info('[%d] Connected to ' + repr(record.b.addr.tcp_addr), record.fileno)
+                stdlog.info('Connected to ' + repr(record.b.addr.tcp_addr))
             except Exception as e:
                 record.error = const.NDMP_MOVER_HALT_CONNECT_ERROR
-                stdlog.error('[%d] Cannot connect to ' + repr(record.b.addr.tcp_addr) + 
-                             ': ' + repr(e), record.fileno)
-            
+                stdlog.error('Cannot connect to ' + repr(record.b.addr.tcp_addr) + 
+                             ': ' + repr(e))
             
     def reply_v4(self, record):
         pass
@@ -103,77 +98,69 @@ class connect():
     request_v3 = request_v4
     reply_v3 = reply_v4
 
-class listen(asyncore.dispatcher):
+class listen():
     '''This request is used by the DMA to instruct the mover create a
        connection end point and listen for a subsequent data connection from
        a Data Server or peer Tape Server (mover). This request is also used
        by the DMA to obtain the address of connection end point the mover is
        listening at.'''
     
+    @ut.valid_state(const.NDMP_MOVER_STATE_IDLE)
     def request_v4(self, record):
-        if(record.mover['state'] != const.NDMP_MOVER_STATE_IDLE):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        else:
-            record.mover['addr_type'] = record.b.addr_type
-            record.mover['mode'] = record.b.mode
+        self.record = record
+        record.mover['addr_type'] = record.b.addr_type
+        record.mover['mode'] = record.b.mode
+        if record.mover['addr_type'] == const.NDMP_ADDR_TCP:
             fd = ip.get_next_data_conn()
-            (hostname, port) = fd.getsockname()
+            (record.mover['host'], record.mover['port']) = fd.getsockname()
             fd.close()
-            self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.set_reuse_addr()
-            self.bind((hostname, port))
-            self.listen(1)
-            host,record.mover['port'] = self.getsockname()
-            record.mover['host'] = ip.ip_address(host)._ip_int_from_string(host)
+            coro = record.loop.create_server(lambda: MoverServer(record),
+                                                        record.mover['host'],
+                                                        record.mover['port'])
+            print(coro)
+            record.mover['server'] = asyncio.async(coro)
+            print(record.mover['server'])
+            t = asyncio.wait_for(record.mover['server'],None)
+            print(t)
             record.mover['state'] = const.NDMP_MOVER_STATE_LISTEN
-            self.record = record
             
+        else:
+            record.error = const.NDMP_NOT_SUPPORTED_ERR
+            
+    @ut.valid_state(const.NDMP_MOVER_STATE_LISTEN)
     def reply_v4(self, record):
-        if(record.mover['state'] != const.NDMP_MOVER_STATE_LISTEN):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        else:
-            record.b.connect_addr = type.ndmp_addr_v4()
-            record.b.connect_addr.addr_type = record.mover['addr_type']
-            if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
-                record.b.connect_addr.tcp_addr = []
-                tcp_addr = type.ndmp_tcp_addr_v4(record.mover['host'],record.mover['port'],[])
-                record.b.connect_addr.tcp_addr.append(tcp_addr)
-                record.mover['peer'] = tcp_addr
+        record.b.connect_addr = type.ndmp_addr_v4()
+        record.b.connect_addr.addr_type = record.mover['addr_type']
+        if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
+            record.b.connect_addr.tcp_addr = []
+            addr = ip.IPv4Address(record.mover['host'])
+            record.mover['tcp_addr'] = type.ndmp_tcp_addr_v4(
+                            addr._ip_int_from_string(record.mover['host']),
+                            record.mover['port'],[])
+            record.b.connect_addr.tcp_addr.append(record.mover['tcp_addr'])
             
+    @ut.valid_state(const.NDMP_MOVER_STATE_LISTEN)        
     def reply_v3(self, record):
-        if(record.mover['state'] != const.NDMP_MOVER_STATE_LISTEN):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        else:
-            record.b.connect_addr = type.ndmp_addr_v4()
-            record.b.connect_addr.addr_type = record.mover['addr_type']
-            if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
-                addr = ip.IPv4Address(record.mover['host'])
-                record.b.data_connection_addr = type.ndmp_addr_v3
-                record.b.data_connection_addr.addr_type = const.NDMP_ADDR_TCP
-                record.b.data_connection_addr.tcp_addr = type.ndmp_tcp_addr
-                record.b.data_connection_addr.tcp_addr.ip_addr = addr._ip_int_from_string(record.mover['host'])
-                record.b.data_connection_addr.tcp_addr.port = record.mover['port']
+        record.b.connect_addr = type.ndmp_addr_v4()
+        record.b.connect_addr.addr_type = record.mover['addr_type']
+        if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
+            addr = ip.IPv4Address(record.mover['host'])
+            record.b.data_connection_addr = type.ndmp_addr_v3
+            record.b.data_connection_addr.addr_type = const.NDMP_ADDR_TCP
+            record.b.data_connection_addr.tcp_addr = type.ndmp_tcp_addr
+            record.b.data_connection_addr.tcp_addr.ip_addr = addr._ip_int_from_string(record.mover['host'])
+            record.b.data_connection_addr.tcp_addr.port = record.mover['port']
 
     request_v3 = request_v4
     
-    def handle_accepted(self, connection, address):
-        stdlog.info('[%d] Connection from ' + repr(address), self.record.fileno)
-        host,self.record.mover['port'] = address
-        self.record.mover['host'] = ip.ip_address(host)._ip_int_from_string(host)
-        # Start an asyncore Consumer for this connection
-        Mover(connection, self.record)
-        self.record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
-        self.close()
-
 class read():
     '''This request is used by the DMA to instruct the mover to begin
        transferring the specified backup stream segment from the tape
        subsystem to the data connection.'''
     
+    @ut.valid_state(const.NDMP_MOVER_STATE_ACTIVE)
     def request_v4(self, record):
-        if(record.mover['state'] not in [const.NDMP_MOVER_STATE_ACTIVE]):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        elif(record.mover['window_length'] == 0):
+        if(record.mover['window_length'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
         else:
             pass
@@ -203,13 +190,14 @@ class get_state():
         record.b.window_offset =  ut.long_long_to_quad(record.mover['window_offset'])
         record.b.window_length =  ut.long_long_to_quad(record.mover['window_length'])
         if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
-            record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_TCP,[record.mover['peer']])
+            record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_TCP,
+                                                              [record.mover['tcp_addr']])
         elif(record.mover['addr_type'] == const.NDMP_ADDR_IPC):
             record.b.data_connection_addr = type.ndmp_ipc_addr(b'')
         else:
             record.b.data_connection_addr = type.ndmp_addr_v4(const.NDMP_ADDR_LOCAL)
         
-        stdlog.info('[%d] Bytes moved: ' + repr(bytes_moved), record.fileno)
+        stdlog.info('Bytes moved: ' + repr(bytes_moved))
         #stdlog.info('MOVER> Bytes left to read: ' + repr(record.mover['bytes_left_to_read']))
 
     reply_v3 = reply_v4
@@ -219,10 +207,9 @@ class spec_continue():
        from the PAUSED state to the ACTIVE state and to resume the transfer
        of data stream between the data connection and the tape subsystem.'''
     
+    @ut.valid_state(const.NDMP_MOVER_STATE_PAUSED)
     def reply_v4(self, record):
-        if(record.mover['state'] != const.NDMP_MOVER_STATE_PAUSED):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        elif(record.mover['window_length'] == 0):
+        if(record.mover['window_length'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
         else:
             record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
@@ -233,11 +220,9 @@ class close():
     '''This request is used by the DMA to instruct the mover to gracefully
        close the current data connection and transition to the HALTED state.'''
     
+    @ut.valid_state(const.NDMP_MOVER_STATE_PAUSED)
     def reply_v4(self, record):
-        if(record.mover['state'] != const.NDMP_MOVER_STATE_PAUSED):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        else:
-            record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
+        record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
     reply_v3 = reply_v4
 
 class stop():
@@ -245,20 +230,18 @@ class stop():
        resources, reset all mover state variables (except record_size), and
        transition the mover to the IDLE state.'''
     
+    @ut.valid_state(const.NDMP_MOVER_STATE_IDLE, False)
     def reply_v4(self, record):
-        if(record.mover['state'] == const.NDMP_MOVER_STATE_IDLE):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        else:
-            record.mover['mode'] = const.NDMP_MOVER_MODE_NOACTION
-            record.mover['state'] = const.NDMP_MOVER_STATE_IDLE
-            record.mover['halt_reason'] = const.NDMP_MOVER_HALT_NA
-            record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_NA
-            record.mover['record_num'] = 0
-            record.mover['bytes_moved'] = 0
-            record.mover['seek_position'] = 0
-            record.mover['bytes_left_to_read'] = 0
-            record.mover['window_length'] = 0 
-            record.mover['window_offset'] = 0
+        record.mover['mode'] = const.NDMP_MOVER_MODE_NOACTION
+        record.mover['state'] = const.NDMP_MOVER_STATE_IDLE
+        record.mover['halt_reason'] = const.NDMP_MOVER_HALT_NA
+        record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_NA
+        record.mover['record_num'] = 0
+        record.mover['bytes_moved'] = 0
+        record.mover['seek_position'] = 0
+        record.mover['bytes_left_to_read'] = 0
+        record.mover['window_length'] = 0 
+        record.mover['window_offset'] = 0
     reply_v3 = reply_v4
     
 class abort():
@@ -266,18 +249,17 @@ class abort():
        any in progress mover operation, close the data connection if
        present, and transition the mover to the to the HALTED state.'''
     
+    @ut.valid_state(const.NDMP_MOVER_STATE_IDLE, False)
     def reply_v4(self, record):
-        if(record.mover['state'] == const.NDMP_MOVER_STATE_IDLE):
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        else:
-            record.mover['mode'] = const.NDMP_MOVER_MODE_NOACTION
-            record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
-            record.mover['halt_reason'] = const.NDMP_MOVER_HALT_ABORTED
-            record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_NA
-            record.mover['record_num'] = 0
-            record.mover['bytes_moved'] = 0
-            record.mover['seek_position'] = 0
-            record.mover['bytes_left_to_read'] = 0
-            record.mover['window_length'] = 0 
-            record.mover['window_offset'] = 0
+        record.mover['server'].cancel()
+        record.mover['mode'] = const.NDMP_MOVER_MODE_NOACTION
+        record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
+        record.mover['halt_reason'] = const.NDMP_MOVER_HALT_ABORTED
+        record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_NA
+        record.mover['record_num'] = 0
+        record.mover['bytes_moved'] = 0
+        record.mover['seek_position'] = 0
+        record.mover['bytes_left_to_read'] = 0
+        record.mover['window_length'] = 0 
+        record.mover['window_offset'] = 0
     reply_v3 = reply_v4

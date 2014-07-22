@@ -1,11 +1,6 @@
 import logging.handlers
 from tools.config import Config; cfg = Config.cfg
 
-
-class NDMPLoggerAdapter(logging.LoggerAdapter):
-    def process(self, msg, kwargs):
-        return "message->" + msg.upper(), kwargs
-
 class Log:
     '''Initialize the opendmp logging system.
     Actually print both to stdout and in a LOGFILE defined in opendmp.conf

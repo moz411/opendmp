@@ -53,8 +53,8 @@ class get_state():
             record.b.blockno = mt['blockno']
             record.b.total_space = mt['total_space']
             record.b.space_remain = mt['space_remain']
-            stdlog.info('[%d] File num: ' + repr(mt['file_num']), record.fileno)
-            stdlog.info('[%d] Block number: ' + repr(mt['blockno']), record.fileno)
+            stdlog.info('File num: ' + repr(mt['file_num']))
+            stdlog.info('Block number: ' + repr(mt['blockno']))
         else:
             record.b.unsupported = 0
             record.b.flags = 0

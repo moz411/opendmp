@@ -4,10 +4,13 @@ finding python files, loading them, and then searching them for any classes that
 subclasses of the class you want. When it gets done, it returns them.
 '''
 from tools.log import Log; stdlog = Log.stdlog
+from xdr import ndmp_const as const
 import inspect, os, importlib
+from functools import wraps
+from distutils import spawn
+from server.bu import Backup_Utility
 
-class Plugins:
-    pass
+
 
 def load_plugins(dirname):
     '''Loads a set of plugins at the given path.'''
@@ -22,9 +25,28 @@ def load_plugins(dirname):
             try:
                 mod = importlib.import_module('bu.' + name)
                 for (mod_type, mod_piece) in inspect.getmembers(mod):
-                    if issubclass(mod_piece, Plugins) and not mod_piece == Plugins:
+                    if (issubclass(mod_piece, Backup_Utility) and not mod_piece == Backup_Utility
+                        and spawn.find_executable(mod_piece.executable)):
                         plugins.append(mod_piece)
             except (TypeError, ImportError):
-                pass 
-
+                pass
     return plugins
+
+def validate(func):
+    '''
+    A decorator that verify if the required plugin exists
+    '''
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        record = args[1]
+        for bu in record.bu_plugins:
+            if record.b.bu_type == bu.butype_info.butype_name:
+                record.data['bu'] = bu
+        if not record.data['bu']:
+            stdlog.error('[%d] BUTYPE ' + bytes(record.b.bu_type).decode() + 
+                         ' not supported', record.fileno)
+            record.error = const.NDMP_ILLEGAL_ARGS_ERR
+            return
+        else:
+            return func(*args, **kwargs)
+    return wrapper

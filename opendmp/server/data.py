@@ -3,103 +3,26 @@ and process the data stream'''
 
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-import asyncore, time
 from xdr import ndmp_const as const
-from interfaces import notify as nt
-from tools import utils as ut
-from subprocess import TimeoutExpired
+import asyncio
 
-
-class Data(asyncore.dispatcher):
+class DataServer(asyncio.Protocol):
     
-    def __init__(self, record):
-        asyncore.dispatcher.__init__(self, record.data['peer'])
+    def __init__(self,record):
         self.record = record
-        self.errmsg = None
-        if record.data['operation'] == const.NDMP_DATA_OP_BACKUP:
-            stdlog.info('[%d] Starting backup of ' + self.record.data['env']['FILESYSTEM'],
-                        record.fileno)
-            self.file = open(self.record.data['bu_fifo'],'rb')
-        else:
-            stdlog.info('[%d] Starting recover of ' + self.record.data['env']['FILESYSTEM'],
-                        record.fileno)
-            self.file = open(self.record.data['bu_fifo'],'wb')
-            nt.data_read().post(self.record)
-    
-    def writable(self): # Backup
-        if (self.record.data['operation'] == const.NDMP_DATA_OP_BACKUP and
-            self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE and
-            self.record.error == const.NDMP_NO_ERR):
-            return True
+            
+    def connection_made(self, transport):
+        self.transport = transport
+        self.record.data['server'] = self
+        stdlog.info('DATA> Connected to ' + repr(self.transport.get_extra_info('peername')))
         
-    def readable(self): # Recover
-        if (self.record.data['operation'] == const.NDMP_DATA_OP_RECOVER and
-            self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE
-            and self.record.error == const.NDMP_NO_ERR):
-            return True
-
-    def handle_write(self): # Backup
-        data = self.file.read(int(cfg['BUFSIZE']))
-        if not data: self.close()
-        self.record.data['stats']['current'] += self.send(data)
-
-    def handle_read(self): # Recover
-        data = self.recv(int(cfg['BUFSIZE']))
-        self.record.data['stats']['current'] += self.file.write(data)
-
-    def handle_error(self):
-        self.record.error = const.NDMP_ILLEGAL_STATE_ERR
-        self.record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
-        stdlog.error('[%d] Data operation failed', record.fileno)
+    def data_received(self, data):
+        pass
+            
+    def connection_lost(self, exc):
+        stdlog.info('DATA>' + repr(self.transport.get_extra_info('peername')) + ' closed the connection')
+        self.record.close()
         
-    def handle_close(self):
-        try:
-            self.record.data['process'].wait(5)
-        except TimeoutExpired:
-            stdlog.error('[%d] killing bu process', record.fileno)
-            self.record.data['process'].kill()
-            self.record.data['process'].wait()
-        try:
-            self.record.data['process'].poll()
-            if self.errmsg:
-                self.record.data['retcode'] = 255
-                self.record.data['error'].append(self.errmsg)
-            else:    
-                self.record.data['retcode'] = self.record.data['process'].returncode
-            with open(self.record.data['bu_fifo'] + '.err', 'rb') as logfile:
-                for line in logfile:
-                    self.record.data['error'].append(line.strip())
-            self.close()
-            # cleanup temporary files
-            for tmpfile in [self.record.data['bu_fifo'] + '.err', 
-                            self.record.data['stampfile'],
-                            self.record.data['bu_fifo']]:
-                if tmpfile is not None: ut.clean_file(tmpfile)
-        except (OSError, ValueError, AttributeError) as e:
-            stdlog.error('[%d] Data close operation failed:' + repr(e), self.record.fileno)
-            
-        self.record.data['state'] = const.NDMP_DATA_STATE_HALTED
-        self.record.data['operation'] = const.NDMP_DATA_OP_NOACTION
-        if (self.record.data['retcode'] == 0):
-            self.record.data['halt_reason'] = const.NDMP_DATA_HALT_SUCCESSFUL
-        else:
-            self.record.error = const.NDMP_ILLEGAL_STATE_ERR
-            self.record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
-        stdlog.info('[%d] BU finished status ' + repr(self.record.data['retcode']),
-                    self.record.fileno)
-            
-    def update_dumpdate(self):            
-        try:
-            # Update dumpdates
-            self.record.data['dumpdates'].update({(self.record.data['env']['FILESYSTEM'],
-                                                   self.record.data['env']['LEVEL']):int(time.time())})
-            ut.write_dumpdates('.'.join([cfg['DUMPDATES'], self.record.data['bu_type']]),
-                               self.record.data['dumpdates'])
-        except (OSError, ValueError, UnboundLocalError) as e:
-            stdlog.error('[%d] update dumpdate failed' + repr(e), self.record.fileno)
-            
-    def log(self, message):
-        stdlog.debug('[%d] ' + message, self.record.fileno)
-
-    def log_info(self, message, type='info'):
-        stdlog.info('[%d] ' + message, self.record.fileno)
+        
+    def abort(self):
+        self.transport.abort()

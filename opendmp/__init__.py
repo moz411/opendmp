@@ -1,5 +1,5 @@
 """
-Copyright (c) 2013 Thomas DUPOUY <moz@gmx.fr>.
+Copyright (c) 2013-2014 Thomas DUPOUY <moz@gmx.fr>.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,
@@ -28,14 +28,15 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
 
-import sys, os, socket, traceback, faulthandler, time
+import sys, os, socket, traceback, time
 from tools.log import Log
 from tools.config import Config
 from tools.daemon import Daemon
-from server.server import NDMPServer
-from server.data import Data
-from server.mover import Mover
+from server.server import NDMPServer, start_NDMPServer
 import asyncio
+
+# set debug mode
+debug = True if (len(sys.argv) == 3 and sys.argv[2] == '--debug') else False
 
 # get config
 try:
@@ -45,34 +46,22 @@ except:
     print('Something wrong with configuration, exiting')
     sys.exit(1)
 
-# Change loglevel if passed in option
-if (len(sys.argv) == 2 and sys.argv[1] == '--debug'):
-    cfg['LOGLEVEL'] = 'debug'
+
     
 # get local logging
-try:
+try:# Change loglevel if passed in option
+    if debug: cfg['LOGLEVEL'] = 'debug'
     stdlog = Log().getlog()
+    if debug: stdlog.setLevel(10)
 except:
     print(traceback.format_exc().splitlines()[-1])
     print('Something wrong with logfile, exiting')
     sys.exit(1)
-
+    
 class NDMPDaemon(Daemon):
     def run(self):
         while True:
-            start_server()
-
-def start_server():
-    try:
-        server = NDMPServer()
-        server.start()
-    except:
-        stdlog.debug('*'*60)
-        stdlog.debug(traceback.format_exc())
-        faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
-        stdlog.debug('*'*60)
-    finally:
-        server.stop()
+            start_NDMPServer()
                 
 if __name__ == "__main__":
     if not (os.path.exists(cfg['RUNDIR'])):
@@ -82,12 +71,10 @@ if __name__ == "__main__":
             stdlog.error(e)
             sys.exit(1)
             
-    daemon = NDMPDaemon(os.path.join(cfg['RUNDIR'],'daemon.pid'))
-    
-    if len(sys.argv) == 2:
-        if '--debug' == sys.argv[1]:
-            stdlog.setLevel(10)
-            start_server()
+    if debug:
+        start_NDMPServer()
+    elif len(sys.argv) == 2:
+        daemon = NDMPDaemon(os.path.join(cfg['RUNDIR'],'daemon.pid'))
         if 'start' == sys.argv[1]:
             daemon.start()
         elif 'stop' == sys.argv[1]:

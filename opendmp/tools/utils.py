@@ -1,9 +1,11 @@
 '''various functions, mainly used to pack NDMP replies'''
 
-import os, sys, re, traceback, time, ctypes, binascii, pickle
+import os, sys, re, traceback, time, ctypes, binascii, pickle, errno
+from functools import wraps
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-import xdr.ndmp_const as const
+from xdr import ndmp_const as const, ndmp_type as types
+from xdr.ndmp_pack import NDMPPacker
 from xdr.ndmp_type import (ndmp_fs_info_v4, ndmp_u_quad,
                            ndmp_pval, ndmp_device_info_v4,
                            ndmp_device_capability_v3)
@@ -18,11 +20,23 @@ def list_scsi_hbas(self):
             for device in os.listdir("/sys/bus/scsi/devices")
             if re.match("[0-9:]+", device)]))
     
-def list_tapes():
+def list_devices():
+    devices = []
     if  (c.system == 'Linux'):
-        return list(set([int(device.partition(":")[0])
-            for device in os.listdir("/sys/class_scsi_tape")
-            if re.match("nst.+", device)]))
+        try:
+            for dev in os.listdir('/sys/class/scsi_tape'):
+                devices.append('/dev/' + dev)
+        except FileNotFoundError: # Not tape drives
+            pass
+        try:
+            for devname in (os.listdir('/sys/class/scsi_changer')): # ndmp_device_info
+                    path = os.path.join('/sys/class/scsi_changer',devname,'device/scsi_generic')
+                    for generic in (os.listdir(path)):
+                        devices.append('/dev/' + generic)
+        except FileNotFoundError: # Not changers
+            pass
+    return devices
+        
 
 def check_device_opened(record):
     try:
@@ -170,17 +184,10 @@ def approximate_size(size, a_kilobyte_is_1024_bytes=True):
     raise ValueError('number too large')
 
 def give_fifo():
-    if not (os.path.exists(cfg['RUNDIR'])):
-        os.mkdir(cfg['RUNDIR'], mode=0o700)
     file = bytes(binascii.b2a_hex(os.urandom(5))).decode()
     filename = os.path.join(cfg['RUNDIR'], file)
     os.mkfifo(filename, mode=0o600)
     return (filename)
-
-def give_socket(fd):
-    sockname =  os.path.join('/proc', repr(os.getpid()), repr(fd.fileno()))
-    print(sockname)
-    return sockname
 
 def clean_file(filename):
     # TODO: fix that bug
@@ -214,9 +221,14 @@ def check_file_mode(st_mode):
         ftype =  const.NDMP_FILE_OTHER
     return (ftype)
 
-def touchopen(filename, *args, **kwargs):
-    open(filename, "a").close() # "touch" file
-    return open(filename, *args, **kwargs)
+def touchopen(filename, mode):
+    try:
+        open(filename, "a").close() # "touch" file
+    except OSError as e:
+        stdlog.error(e)
+        raise
+    else:
+        return open(filename, mode)
 
 def read_dumpdates(file):
     # Read dumpdates or create it
@@ -245,4 +257,140 @@ def compute_incremental(dumpdates, filesystem, level):
             continue
     return tstamp
     
-    
+def valid_state(state, reverse=True):
+    '''
+    A decorator that validate the Mover or Data session state
+    '''
+    if isinstance(state, int):
+        state = [state]
+        
+    def decorate(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            record = args[1]
+            if func.__module__ == 'interfaces.data':
+                record_state = record.data['state']
+            elif func.__module__ == 'interfaces.mover':
+                record_state = record.mover['state']
+            if ((reverse and record_state not in state) 
+                or (not reverse and record_state in state)):
+                record.error = const.NDMP_ILLEGAL_STATE_ERR
+            else:
+                return func(*args, **kwargs)
+        return wrapper
+    return decorate
+
+def post(body_pack_func, message):
+    '''
+    A decorator that prepare the message post header, 
+    then execute post function, pack and enqueue the message
+    '''
+    def decorate(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            record = args[1]
+            p = NDMPPacker()
+            # Header
+            record.post_header = types.ndmp_header()
+            record.post_header.message_type = const.NDMP_MESSAGE_REQUEST
+            record.post_header.message = message
+            record.post_header.sequence = record.server_sequence
+            record.post_header.reply_sequence = 0
+            record.post_header.time_stamp = int(time.time())
+            record.post_header.error = const.NDMP_NO_ERR
+            exec('record.post_body = types.' + body_pack_func + '()')
+            func(*args, **kwargs)
+            p.pack_ndmp_header(record.post_header)
+            exec('p.pack_' + body_pack_func + '(record.post_body)')
+            record.server_sequence+=1
+            stdlog.debug(repr(record.post_body))
+            return p.get_buffer()
+        return wrapper
+    return decorate
+
+def try_io(func):
+    '''
+    A decorator that encapsulate the os.io operations
+    and catch os errors
+    '''
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        record = args[1]
+        try:
+            r = func(*args, **kwargs)
+        except (OSError, IOError) as e:
+            stdlog.error(record.device.path + ': ' + e.strerror)
+            if(e.errno == errno.EACCES):
+                record.error = const.NDMP_WRITE_PROTECT_ERR
+            elif(e.errno == errno.ENOENT):
+                record.error = const.NDMP_NO_DEVICE_ERR
+            elif(e.errno == errno.EBUSY):
+                record.error = const.NDMP_DEVICE_BUSY_ERR
+            elif(e.errno == errno.ENODEV):
+                record.error = const.NDMP_NO_DEVICE_ERR
+            elif(e.errno == errno.ENOSPC):
+                record.error = const.NDMP_EOM_ERR
+                record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
+                record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
+                try:
+                    record.device.fd.flush()
+                except BlockingIOError as e:
+                    stdlog.debug(e)
+            elif(e.errno == 123):
+                record.error = const.NDMP_NO_TAPE_LOADED_ERR
+            else:
+                record.error = const.NDMP_IO_ERR
+        else:
+            return r
+    return wrapper
+
+def device_opened(func):
+    '''
+    A decorator that print a log if device is not opened
+    '''
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        record = args[1]
+        try:
+            r = func(*args, **kwargs)
+        except TypeError:
+            stdlog.info('device ' + record.device.path + ' not opened')
+        else:
+            return r
+    return wrapper
+
+def async_opened(func):
+    '''
+    A decorator that return if asyncore fd is already closed
+    '''
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        if not args[0]._fileno:
+            return
+        else:
+            func(*args, **kwargs)
+    return wrapper
+
+def extract_env(record):
+    # Extract all env variables, overwrite default_env
+    for pval in record.data['bu'].butype_info.default_env:
+        name = pval.name.decode().strip()
+        value = pval.value.decode().strip()
+        record.data['bu'].env[name] =  value
+    for pval in record.b.env:
+        name = pval.name.decode().strip()
+        value = pval.value.decode('utf-8', 'replace').strip()
+        record.data['bu'].env[name] =  value
+            
+    # Retrieving FILESYSTEM to backup or restore
+    try:
+        if(record.data['bu'].env['FILES']):
+            record.data['bu'].env['FILESYSTEM'] = record.data['bu'].env['FILES']
+    except KeyError:
+        pass
+    try:
+        assert(record.data['bu'].env['FILESYSTEM'] != None)
+    except (KeyError, AssertionError):
+        stdlog.error('[%d] variable FILESYSTEM does not exists', record.fileno)
+        record.error = const.NDMP_ILLEGAL_ARGS_ERR
+        return

@@ -14,27 +14,11 @@ from os import errno
 # mag tape io control commands
 def MTIOCTOP(record):
     '''do a mag tape op'''
-    if(record.b.tape_op == const.NDMP_MTIO_REW):
-        pass
-    elif(record.b.tape_op == const.NDMP_MTIO_OFF):
-        pass
-    elif(record.b.tape_op == const.NDMP_MTIO_TUR):
-        pass
-    elif(record.b.tape_op == const.NDMP_MTIO_FSF):
-        pass
-    elif(record.b.tape_op == const.NDMP_MTIO_BSF):
-        pass
-    elif(record.b.tape_op == const.NDMP_MTIO_FSR):
-        pass
-    elif(record.b.tape_op == const.NDMP_MTIO_BSR):
-        pass
-    elif(record.b.tape_op == const.NDMP_MTIO_REW):
-        pass
-    elif(record.b.tape_op == const.NDMP_MTIO_EOF):
-        pass
-    elif(record.b.tape_op == const.NDMP_MTIO_OFF):
-        pass
-    else:
+    if(record.b.tape_op not in [const.NDMP_MTIO_REW, const.NDMP_MTIO_OFF,
+                            const.NDMP_MTIO_TUR, const.NDMP_MTIO_FSF,
+                            const.NDMP_MTIO_BSF, const.NDMP_MTIO_FSR,
+                            const.NDMP_MTIO_BSR, const.NDMP_MTIO_REW,
+                            const.NDMP_MTIO_EOF, const.NDMP_MTIO_OFF]):
         record.error = const.NDMP_NOT_SUPPORTED_ERR
         return
     
