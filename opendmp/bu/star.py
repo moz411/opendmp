@@ -36,9 +36,12 @@ class Star(Backup_Utility):
     def backup(self):
         # Preparing command line
         if (c.system == 'FreeBSD'):
-            command_line = 'EXECUTABLE -c -dump -no-fifo f=FIFO -find . INCREMENTAL -xdev -exec stat -r {} \;'
+            command_line = 'EXECUTABLE -c -dump -no-fifo f=FIFO \
+                            -find . INCREMENTAL -xdev -exec stat -r {} \;'
         elif (c.system == 'Linux'):
-            command_line = 'EXECUTABLE -c -dump -no-fifo f=FIFO -find . INCREMENTAL -xdev -exec stat -c "%d %i %f %h %u %g %d %s %X %Y %Z %Z %o %b %Z %n" {} \;'
+            command_line = 'EXECUTABLE -c -dump -no-fifo f=FIFO \
+                            -find . INCREMENTAL -xdev -exec stat \
+                            -c "%d %i %f %h %u %g %d %s %X %Y %Z %Z %o %b %Z %n" {} \;'
         
         command_line = re.sub('EXECUTABLE', self.executable, command_line)
         command_line = re.sub('FIFO', self.fifo, command_line)
@@ -68,7 +71,7 @@ class Star(Backup_Utility):
                 self.process = yield from asyncio.create_subprocess_exec(shlex.split(command_line), 
                                                           cwd=self.env['FILESYSTEM'],
                                                           stdout=listing, stderr=error, shell=False)
-    
+        
     def recover(self):
         filesystem = ''
         rename = '-s /OLD/NEW/'

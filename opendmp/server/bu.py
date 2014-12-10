@@ -3,10 +3,10 @@ from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 from interfaces import notify as nt, log as ndmplog, fh
-import asyncore, os, queue, traceback
+import queue, traceback
 from subprocess import TimeoutExpired
 
-class Backup_Utility(asyncore.file_dispatcher):
+class Backup_Utility(object):
         
     def __init__(self, record):
         self.record = record
@@ -15,7 +15,7 @@ class Backup_Utility(asyncore.file_dispatcher):
         # FIFO for data transfer with Backup Utility
         self.fifo = ut.give_fifo()
         # File History
-        self.history = self.fifo + '.lst'
+        self.history = ut.give_fifo(self.fifo+'.lst')
         # BU error log
         self.errorlog = self.fifo + '.err'
         # subprocess
@@ -24,17 +24,13 @@ class Backup_Utility(asyncore.file_dispatcher):
         self.retcode = 0
         self.errmsg = []
         
-        file = os.open(self.fifo, os.O_RDWR | os.O_NONBLOCK)
-        asyncore.file_dispatcher.__init__(self, file)
-        os.close(file)
-          
     def readable(self): # Backup
         return True if (self.record.data['operation'] == const.NDMP_DATA_OP_BACKUP and
             self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE and 
             self.record.error == const.NDMP_NO_ERR and 
             not self.queue.full()) else False
     
-    def writable(self): #Â Recover
+    def writable(self): # Recover
         return True if (self.record.data['operation'] == const.NDMP_DATA_OP_RECOVER and
             self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE and
             self.record.error == const.NDMP_NO_ERR) else False
@@ -87,8 +83,3 @@ class Backup_Utility(asyncore.file_dispatcher):
         for file in [self.fifo, self.history, self.errorlog]:
             ut.clean_file(file)
             
-    def log(self, message):
-        stdlog.debug(message)
-
-    def log_info(self, message, type='info'):
-        stdlog.info(message)

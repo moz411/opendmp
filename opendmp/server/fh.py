@@ -2,27 +2,18 @@
 
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-import asyncore, traceback
+import asyncio, os, traceback
 from interfaces import fh
 from tools import utils as ut
 
-class Fh(asyncore.file_dispatcher):
+class Fh():
     
     def __init__(self, record):
         self.record = record
-        self.file = open(self.record.fh['history'], mode='rb')
-        asyncore.file_dispatcher.__init__(self, self.file)
-        stdlog.info('[%d] Starting File History of ' + self.record.data['env']['FILESYSTEM'],
-                    record.fileno)
+        self.file = None
         
-    def writable(self):
-        return False
-        
-    def readeable(self):
-        return True
-
     def handle_read(self):
-        line = self.file.readline()
+        line = self.record.data['bu'].history.readline()
         if line: self.record.fh['files'].append(line.strip())
         else: self.handle_close()
         if len(self.record.fh['files']) >= self.record.fh['max_lines']:
@@ -36,12 +27,13 @@ class Fh(asyncore.file_dispatcher):
     def handle_close(self):
         if (len(self.record.fh['files']) > 0):
                 fh.add_file().post(self.record)
-        self.close()
-        ut.clean_file(self.record.fh['history'])
-        stdlog.info('[%d] File History operation finished', self.record.fileno)
+        self.file.close()
+        ut.clean_file(self.record.data['bu'].history)
+        stdlog.info('File History operation finished', self.record.fileno)
 
-    def log(self, message):
-        stdlog.debug('[%d] Fh ' + message, self.record.fileno)
-
-    def log_info(self, message, type='info'):
-        stdlog.info('[%d] Fh ' + message, self.record.fileno)
+    def start(self):
+        # Register the file descriptor for read event
+        stdlog.info('Starting File History of ' + self.record.data['bu'].env['FILESYSTEM'])
+        self.loop = asyncio.get_event_loop()
+        self.file = os.open(self.record.data['bu'].history, os.O_RDONLY | os.O_NONBLOCK)
+        self.loop.add_reader(self.file, self.handle_read)

@@ -121,6 +121,7 @@ class start_backup():
         
         # Launch the File History asyncore Consumer
         record.data['fh'] = Fh(record)
+        record.data['fh'].start()
         
     def reply_v4(self, record):
         pass
