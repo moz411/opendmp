@@ -11,7 +11,7 @@ and networks.
 __version__ = '1.0'
 
 
-import socket, threading, os, struct, fcntl
+import socket, threading, os, struct, fcntl, traceback
 from queue import Queue, Empty
 from tools.config import Config; cfg = Config.cfg; c = Config
 from tools.log import Log; stdlog = Log.stdlog
@@ -2133,16 +2133,19 @@ def get_next_data_conn(loopback=False):
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.setblocking(0)
     found = False
+    data_iface = None
+    
     try:
-        if loopback:
+        data_iface = cfg['DATA_IFACE']
+    except KeyError:
+        try:
+            if loopback:
+                data_iface = '127.0.0.1'
+            else:
+                data_iface = get_lan_ip()
+        except (KeyError, struct.error):
             data_iface = '127.0.0.1'
-        elif cfg['DATA_IFACE']:
-            data_iface = cfg['DATA_IFACE']
-        else:
-            data_iface = get_lan_ip()
-    except (KeyError, struct.error):
-        data_iface = '127.0.0.1'
-        
+    
     first, last = cfg['DATA_PORT_RANGE'].split('-')
     port = (x for x in range(int(first), int(last)))
     while not found:
