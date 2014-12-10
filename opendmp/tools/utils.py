@@ -183,8 +183,9 @@ def approximate_size(size, a_kilobyte_is_1024_bytes=True):
             return '{0:.1f} {1}'.format(size, suffix)
     raise ValueError('number too large')
 
-def give_fifo():
-    file = bytes(binascii.b2a_hex(os.urandom(5))).decode()
+def give_fifo(file=None):
+    if not file:
+        file = bytes(binascii.b2a_hex(os.urandom(5))).decode()
     filename = os.path.join(cfg['RUNDIR'], file)
     os.mkfifo(filename, mode=0o600)
     return (filename)
@@ -221,7 +222,7 @@ def check_file_mode(st_mode):
         ftype =  const.NDMP_FILE_OTHER
     return (ftype)
 
-def touchopen(filename, mode):
+def touchopen(filename, mode='a'):
     try:
         open(filename, "a").close() # "touch" file
     except OSError as e:
