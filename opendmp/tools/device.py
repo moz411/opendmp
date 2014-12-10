@@ -43,7 +43,7 @@ class Device():
                                    const.NDMP_TAPE_RAW2_MODE]):
                 mode = 'wb'
         else:
-            mode = os.O_RDWR | os.O_NDELAY
+            mode = 'wb'
         self.fd = open(self.path, mode, record.mover['record_size'])
         self.opened = True
         stdlog.info('device ' + self.path + ' opened')
