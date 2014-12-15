@@ -292,14 +292,6 @@ class Record():
         self.p.reset()
         
     def close(self):
-        # Make sure every asyncore Consumer is terminated
-        for consumer in [self.data['server'], self.mover['server'],
-                         self.data['bu'], self.data['fh']]:
-            try:
-                consumer.handle_close()
-            except (OSError,AttributeError):
-                pass
-        
         # Close device if any
         try:
             self.device.close(self)

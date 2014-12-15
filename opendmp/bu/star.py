@@ -7,9 +7,9 @@ from tools import utils as ut
 from xdr import ndmp_const as const
 from xdr.ndmp_type import ndmp_butype_info, ndmp_pval
 from server.bu import Backup_Utility
-import re, time, subprocess, shlex, asyncio
+import re, asyncio
 
-class Star(Backup_Utility): 
+class Star(): 
     
     name = 'star'
     ostype = c.Unix
@@ -36,14 +36,10 @@ class Star(Backup_Utility):
     def backup(self):
         # Preparing command line
         if (c.system == 'FreeBSD'):
-            command_line = 'EXECUTABLE -c -dump -no-fifo f=FIFO \
-                            -find . INCREMENTAL -xdev -exec stat -r {} \;'
+            command_line = '-c -dump -no-fifo f=FIFO -find . INCREMENTAL -xdev -exec stat -r {} \;'
         elif (c.system == 'Linux'):
-            command_line = 'EXECUTABLE -c -dump -no-fifo f=FIFO \
-                            -find . INCREMENTAL -xdev -exec stat \
-                            -c "%d %i %f %h %u %g %d %s %X %Y %Z %Z %o %b %Z %n" {} \;'
+            command_line = '-c -dump -no-fifo f=FIFO -find . INCREMENTAL -xdev -exec stat -c "%d %i %f %h %u %g %d %s %X %Y %Z %Z %o %b %Z %n" {} \;'
         
-        command_line = re.sub('EXECUTABLE', self.executable, command_line)
         command_line = re.sub('FIFO', self.fifo, command_line)
         command_line = re.sub('FILESYSTEM', self.env['FILESYSTEM'], command_line)
         
@@ -66,11 +62,13 @@ class Star(Backup_Utility):
         stdlog.info('Backup level ' + repr(self.env['LEVEL']))
         
         # Launch the backup process
-        with open(self.history, 'w', encoding='utf-8') as listing:
-            with open(self.errorlog, 'w', encoding='utf-8') as error:
-                self.process = yield from asyncio.create_subprocess_exec(shlex.split(command_line), 
-                                                          cwd=self.env['FILESYSTEM'],
-                                                          stdout=listing, stderr=error, shell=False)
+        loop = asyncio.get_event_loop()
+        self.process,  =  loop.subprocess_exec(Backup_Utility,
+                                            self.executable,'-vvv',command_line,
+                                            cwd=self.env['FILESYSTEM'],
+                                            stdout=asyncio.subprocess.PIPE,
+                                            stderr=asyncio.subprocess.PIPE)
+            
         
     def recover(self):
         filesystem = ''
@@ -117,13 +115,3 @@ class Star(Backup_Utility):
             
         
         return (command_line)
-        
-    def update_dumpdate(self):            
-        try:
-            # Update dumpdates
-            self.dumpdates.update({(self.env['FILESYSTEM'],
-                                                   self.env['LEVEL']):int(time.time())})
-            ut.write_dumpdates('.'.join([cfg['DUMPDATES'], self.record.data['bu_type']]),
-                               self.record.data['dumpdates'])
-        except (OSError, ValueError, UnboundLocalError) as e:
-            stdlog.error('[%d] update dumpdate failed' + repr(e), self.record.fileno)

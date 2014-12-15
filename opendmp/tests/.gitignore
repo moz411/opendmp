@@ -37,3 +37,4 @@ src/infi.asi.egg-info/
 .hg/
 
 /__pycache__
+/centos.idx

@@ -109,19 +109,20 @@ class start_backup():
         try:
             assert(os.path.exists(record.data['bu'].env['FILESYSTEM']))
         except (KeyError, AssertionError):
-            stdlog.error('[%d] FILESYSTEM ' + record.data['bu'].env['FILESYSTEM'] +
-                          ' does not exists', record.fileno)
+            stdlog.error('FILESYSTEM ' + record.data['bu'].env['FILESYSTEM'] +
+                          ' does not exists')
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         
         # Release the Data Consumer and start the backup
         record.data['bu'].backup()
+        yield from record.data['bu'].process.wait()
         stdlog.info('Starting backup of ' + record.data['bu'].env['FILESYSTEM'])
         record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
         
-        # Launch the File History asyncore Consumer
-        record.data['fh'] = Fh(record)
-        record.data['fh'].start()
+        # Launch the File History Consumer
+        #record.data['fh'] = Fh(record)
+        #record.data['fh'].start()
         
     def reply_v4(self, record):
         pass
@@ -152,18 +153,17 @@ class start_recover():
                         'fh_info': ut.quad_to_long_long(record.b.nlist[0].fh_info)
                         }
         except IndexError:
-            stdlog.error('[%d] Invalid informations sent by DMA', record.fileno)
+            stdlog.error('Invalid informations sent by DMA')
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
             return
         
         # Generate the command line
         command_line = record.bu.recover(record)
-        stdlog.debug('[%d] ' + command_line, record.fileno)
+        stdlog.debug(command_line)
         
         # release the Data Consumer
         self.record.data['sock'].file = open(record.data['bu_fifo'],'wb')
-        stdlog.info('[%d] Starting recover of ' + self.record.data['env']['FILESYSTEM'],
-                        record.fileno)
+        stdlog.info('Starting recover of ' + self.record.data['env']['FILESYSTEM'])
         record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
         
         # Launch the recover process

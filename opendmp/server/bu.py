@@ -3,83 +3,31 @@ from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 from interfaces import notify as nt, log as ndmplog, fh
-import queue, traceback
-from subprocess import TimeoutExpired
+import time, asyncio
 
-class Backup_Utility(object):
+class Backup_Utility(asyncio.SubprocessProtocol):
         
-    def __init__(self, record):
-        self.record = record
-        self.env = {}
-        self.queue = queue.Queue(maxsize=100*(int(cfg['BUFSIZE'])))
-        # FIFO for data transfer with Backup Utility
-        self.fifo = ut.give_fifo()
-        # File History
-        self.history = ut.give_fifo(self.fifo+'.lst')
-        # BU error log
-        self.errorlog = self.fifo + '.err'
-        # subprocess
-        self.process = None
-        # subprocess return code
-        self.retcode = 0
-        self.errmsg = []
-        
-    def readable(self): # Backup
-        return True if (self.record.data['operation'] == const.NDMP_DATA_OP_BACKUP and
-            self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE and 
-            self.record.error == const.NDMP_NO_ERR and 
-            not self.queue.full()) else False
-    
-    def writable(self): # Recover
-        return True if (self.record.data['operation'] == const.NDMP_DATA_OP_RECOVER and
-            self.record.data['state'] == const.NDMP_DATA_STATE_ACTIVE and
-            self.record.error == const.NDMP_NO_ERR) else False
+    def connection_made(self, transport):
+        self.stdin = transport.get_pipe_transport(0)
 
-    def handle_read(self): # Backup
-        data = self.read(int(cfg['BUFSIZE']))
-        if data == b'\x00'*int(cfg['BUFSIZE']): # maybe the subprocess have finished
-            try:
-                self.process.wait(.1)
-            except TimeoutExpired: # subprocess not finished
-                self.queue.put(data)
-            else:
-                self.queue.put(None) # Poison pill for Data
-                self.handle_close()
-        self.queue.put(data)
-
-    def handle_write(self): #Â Recover
-        self.write(self.queue.get())
-
-    def handle_error(self):
-        traceback.print_exc()
-        self.handle_close()
+    def connection_lost(self, exc):
+        stdlog.error(exc)
         
-    @ut.async_opened
-    def handle_close(self):
-        # Close current fifo
-        self.close()
+    def pipe_data_received(self, fd, data):
+        print('pipe_data_received%r' % ((fd, data),))
         
-        # Kill BU process
+    def pipe_connection_lost(self, fd, exc):
+        print('pipe_connection_lost%r' % ((fd, exc),))
+        
+    def  process_exited(self):
+        stdlog.info('process exited')
+                  
+    def update_dumpdate(self):            
         try:
-            self.process.wait(5)
-        except TimeoutExpired:
-            stdlog.error('killing bu process')
-            self.process.kill()
-            self.process.wait()
-        try:
-            self.process.poll()
-            self.retcode = self.process.returncode
-        except (OSError, ValueError, AttributeError) as e:
-            stdlog.error('BU close operation failed:' + repr(e))
-            self.retcode = 255
-        
-        # retrieve bu log file
-        with open(self.errorlog, 'rb') as logfile:
-            for line in logfile:
-                self.errmsg.append(line.strip())
-        ndmplog.message().post(self.record)
-        
-        # Cleanup temp files
-        for file in [self.fifo, self.history, self.errorlog]:
-            ut.clean_file(file)
-            
+            # Update dumpdates
+            self.dumpdates.update({(self.env['FILESYSTEM'],
+                                                   self.env['LEVEL']):int(time.time())})
+            ut.write_dumpdates('.'.join([cfg['DUMPDATES'], self.record.data['bu_type']]),
+                               self.record.data['dumpdates'])
+        except (OSError, ValueError, UnboundLocalError) as e:
+            stdlog.error('update dumpdate failed' + repr(e))

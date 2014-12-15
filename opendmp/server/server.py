@@ -59,10 +59,16 @@ class NDMPServer(asyncio.Protocol):
 
     def handle_write(self,task):
         ''''Prepare and send messages using record marking standard'''
-        # Retrieve the formated NDMP message from the asyncore Task
-        data = task.result()
-        # Prepare the XDR header
-        x = len(data) | 0x80000000
-        header = struct.pack(self.structFormat, x | len(data))
-        # Send the message
-        self.transport.write(header + data)
+        # Retrieve the formated NDMP message from the asyncio Task
+        try:
+            data = task.result()
+        except EOFError:
+            # XDR error, close connection
+            stdlog.error(repr(self.transport.get_extra_info('peername')) + ': XDR Error')
+            self.transport.close()
+        else:
+            # Prepare the XDR header
+            x = len(data) | 0x80000000
+            header = struct.pack(self.structFormat, x | len(data))
+            # Send the message
+            self.transport.write(header + data)

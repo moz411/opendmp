@@ -360,18 +360,6 @@ def device_opened(func):
             return r
     return wrapper
 
-def async_opened(func):
-    '''
-    A decorator that return if asyncore fd is already closed
-    '''
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        if not args[0]._fileno:
-            return
-        else:
-            func(*args, **kwargs)
-    return wrapper
-
 def extract_env(record):
     # Extract all env variables, overwrite default_env
     for pval in record.data['bu'].butype_info.default_env:
@@ -392,6 +380,6 @@ def extract_env(record):
     try:
         assert(record.data['bu'].env['FILESYSTEM'] != None)
     except (KeyError, AssertionError):
-        stdlog.error('[%d] variable FILESYSTEM does not exists', record.fileno)
+        stdlog.error('variable FILESYSTEM does not exists')
         record.error = const.NDMP_ILLEGAL_ARGS_ERR
         return

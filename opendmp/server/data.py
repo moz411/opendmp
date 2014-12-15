@@ -23,6 +23,5 @@ class DataServer(asyncio.Protocol):
         stdlog.info('DATA>' + repr(self.transport.get_extra_info('peername')) + ' closed the connection')
         self.record.close()
         
-        
     def abort(self):
         self.transport.abort()

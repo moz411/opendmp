@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+#-*- coding: utf-8 -*-
 """
 Copyright (c) 2013-2014 Thomas DUPOUY <moz@gmx.fr>.
 All rights reserved.
