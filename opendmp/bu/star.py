@@ -7,9 +7,9 @@ from tools import utils as ut
 from xdr import ndmp_const as const
 from xdr.ndmp_type import ndmp_butype_info, ndmp_pval
 from server.bu import Backup_Utility
-import re, asyncio
+import re, asyncio, shlex
 
-class Star(): 
+class Star(Backup_Utility): 
     
     name = 'star'
     ostype = c.Unix
@@ -38,7 +38,8 @@ class Star():
         if (c.system == 'FreeBSD'):
             command_line = '-c -dump -no-fifo f=FIFO -find . INCREMENTAL -xdev -exec stat -r {} \;'
         elif (c.system == 'Linux'):
-            command_line = '-c -dump -no-fifo f=FIFO -find . INCREMENTAL -xdev -exec stat -c "%d %i %f %h %u %g %d %s %X %Y %Z %Z %o %b %Z %n" {} \;'
+            #command_line = '-c -dump -no-fifo f=FIFO -find . INCREMENTAL -xdev -exec stat -c \'%d %i %f %h %u %g %d %s %X %Y %Z %Z %o %b %Z %n\' {} \;'
+            command_line = '-c -f=FIFO FILESYSTEM'
         
         command_line = re.sub('FIFO', self.fifo, command_line)
         command_line = re.sub('FILESYSTEM', self.env['FILESYSTEM'], command_line)
@@ -63,13 +64,30 @@ class Star():
         
         # Launch the backup process
         loop = asyncio.get_event_loop()
-        self.process,  =  loop.subprocess_exec(Backup_Utility,
-                                            self.executable,'-vvv',command_line,
-                                            cwd=self.env['FILESYSTEM'],
-                                            stdout=asyncio.subprocess.PIPE,
-                                            stderr=asyncio.subprocess.PIPE)
-            
+        exit_future = asyncio.Future(loop=loop)
         
+        create  =  loop.subprocess_exec(lambda: Backup_Utility(exit_future),
+                                            self.executable,command_line,
+                                            stdout=asyncio.subprocess.PIPE,
+                                            stderr=asyncio.subprocess.PIPE,
+                                            cwd=self.env['FILESYSTEM']
+                                            )
+        asyncio.base_events
+        asyncio.base_subprocess
+        transport, protocol = yield from create
+
+        # Wait for the subprocess exit using the process_exited() method
+        # of the protocol
+        yield from exit_future
+    
+        # Close the stdout pipe
+        transport.close()
+    
+        # Read the output which was collected by the pipe_data_received()
+        # method of the protocol
+        data = bytes(protocol.output)
+        return data.decode().rstrip()
+    
     def recover(self):
         filesystem = ''
         rename = '-s /OLD/NEW/'

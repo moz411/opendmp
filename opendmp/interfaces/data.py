@@ -115,8 +115,7 @@ class start_backup():
             return
         
         # Release the Data Consumer and start the backup
-        record.data['bu'].backup()
-        yield from record.data['bu'].process.wait()
+        asyncio.async(record.data['bu'].backup())
         stdlog.info('Starting backup of ' + record.data['bu'].env['FILESYSTEM'])
         record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
         

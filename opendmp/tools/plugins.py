@@ -24,7 +24,7 @@ def load_plugins(dirname):
             name = f[:-3]
             try:
                 mod = importlib.import_module('bu.' + name)
-                for (mod_type, mod_piece) in inspect.getmembers(mod):
+                for (_, mod_piece) in inspect.getmembers(mod):
                     if (issubclass(mod_piece, Backup_Utility) and not mod_piece == Backup_Utility
                         and spawn.find_executable(mod_piece.executable)):
                         plugins.append(mod_piece)
