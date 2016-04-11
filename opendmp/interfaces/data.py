@@ -7,11 +7,18 @@ of data that can be written to the tape device.
 '''
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-import subprocess, shlex, socket, os, asyncio, traceback
+import sys, subprocess, shlex, socket, os, asyncio, traceback, functools
 from server.data import DataServer
+from server.bu import start_bu
 from server.fh import Fh
 from xdr import ndmp_const as const, ndmp_type as type
 from tools import utils as ut, ipaddress as ip, plugins
+
+
+#sys.path.append("../tools/pysendfile-2.0.1-py3.4-linux-x86_64.egg")
+#print(sys.path)
+#import sendfile
+#print(sendfile)
 
 class connect():
     '''This request is used by the DMA to instruct the Data Server to
@@ -26,10 +33,10 @@ class connect():
             ip_int = record.b.tcp_addr[0].ip_addr
             record.data['host'] = ip.IPv4Address(ip_int)._string_from_ip_int(ip_int)
             record.data['port'] = self.record.b.tcp_addr[0].port
-            coro = record.loop.create_connection(lambda: DataServer(record),
+            record.data['server'] = record.loop.create_connection(lambda: DataServer(record),
                                           record.data['host'],
                                           record.data['port'])
-            asyncio.wait_for(asyncio.async(coro),None)
+            asyncio.wait_for(asyncio.async(record.data['server']),None)
             record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
         else:
             record.error = const.NDMP_NOT_SUPPORTED_ERR
@@ -96,27 +103,11 @@ class start_backup():
     
     @ut.valid_state(const.NDMP_DATA_STATE_CONNECTED)
     @plugins.validate
-    def request_v4(self, record):
+    def request_v4(self, record, *args, **kwargs):
         record.data['operation'] = const.NDMP_DATA_OP_BACKUP
-        
-        # Create an instance of the Backup Utility
-        record.data['bu'] = record.data['bu'](record)
-        
-        # Extract the env variables passed by the DMA
-        ut.extract_env(record)
-        
-        # Verify the filesystem to backup exists
-        try:
-            assert(os.path.exists(record.data['bu'].env['FILESYSTEM']))
-        except (KeyError, AssertionError):
-            stdlog.error('FILESYSTEM ' + record.data['bu'].env['FILESYSTEM'] +
-                          ' does not exists')
-            record.error = const.NDMP_ILLEGAL_ARGS_ERR
-            return
-        
-        # Release the Data Consumer and start the backup
-        asyncio.async(record.data['bu'].backup())
-        stdlog.info('Starting backup of ' + record.data['bu'].env['FILESYSTEM'])
+        record.bu['env'] = record.b.env
+        # Start the backup and release the Data Consumer
+        asyncio.async(start_bu(record))
         record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
         
         # Launch the File History Consumer
@@ -161,12 +152,12 @@ class start_recover():
         stdlog.debug(command_line)
         
         # release the Data Consumer
-        self.record.data['sock'].file = open(record.data['bu_fifo'],'wb')
+        self.record.data['sock'].file = open(record.bu['fifo'],'wb')
         stdlog.info('Starting recover of ' + self.record.data['env']['FILESYSTEM'])
         record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
         
         # Launch the recover process
-        with open(record.data['bu_fifo'] + '.err', 'w', encoding='utf-8') as error:
+        with open(record.bu['fifo'] + '.err', 'w', encoding='utf-8') as error:
             record.data['process'] = subprocess.Popen(shlex.split(command_line),
                                                    stdin=subprocess.PIPE,
                                                    stderr=error,

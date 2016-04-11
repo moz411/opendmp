@@ -187,19 +187,20 @@ def give_fifo(file=None):
     if not file:
         file = bytes(binascii.b2a_hex(os.urandom(5))).decode()
     filename = os.path.join(cfg['RUNDIR'], file)
-    os.mkfifo(filename, mode=0o600)
-    return (filename)
-
-def clean_file(filename):
-    # TODO: fix that bug
-    #try:
-    #    dir = os.path.split(filename)[0]
-    #except AttributeError:
-    #    pass
-    #if not (dir == cfg['RUNDIR']): return
     try:
+        assert os.path.abspath(filename).startswith(cfg['RUNDIR'])
+        os.mkfifo(filename, mode=0o600)
+    except AssertionError as e:
+        stdlog.error(e)
+    else:
+        return filename
+
+def clean_fifo(file):
+    filename = os.path.join(cfg['RUNDIR'], file)
+    try:
+        assert os.path.abspath(filename).startswith(cfg['RUNDIR'])
         os.remove(filename)
-    except OSError as e:
+    except (AssertionError, OSError) as e:
         stdlog.error(e)
 
         
@@ -359,27 +360,3 @@ def device_opened(func):
         else:
             return r
     return wrapper
-
-def extract_env(record):
-    # Extract all env variables, overwrite default_env
-    for pval in record.data['bu'].butype_info.default_env:
-        name = pval.name.decode().strip()
-        value = pval.value.decode().strip()
-        record.data['bu'].env[name] =  value
-    for pval in record.b.env:
-        name = pval.name.decode().strip()
-        value = pval.value.decode('utf-8', 'replace').strip()
-        record.data['bu'].env[name] =  value
-            
-    # Retrieving FILESYSTEM to backup or restore
-    try:
-        if(record.data['bu'].env['FILES']):
-            record.data['bu'].env['FILESYSTEM'] = record.data['bu'].env['FILES']
-    except KeyError:
-        pass
-    try:
-        assert(record.data['bu'].env['FILESYSTEM'] != None)
-    except (KeyError, AssertionError):
-        stdlog.error('variable FILESYSTEM does not exists')
-        record.error = const.NDMP_ILLEGAL_ARGS_ERR
-        return

@@ -41,8 +41,8 @@ def validate(func):
         record = args[1]
         for bu in record.bu_plugins:
             if record.b.bu_type == bu.butype_info.butype_name:
-                record.data['bu'] = bu
-        if not record.data['bu']:
+                record.bu['utility'] = bu
+        if not record.bu['utility']:
             stdlog.error('BUTYPE ' + bytes(record.b.bu_type).decode() + 
                          ' not supported')
             record.error = const.NDMP_ILLEGAL_ARGS_ERR

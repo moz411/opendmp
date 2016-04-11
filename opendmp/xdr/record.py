@@ -46,9 +46,7 @@ class Record():
                 'server': None,
                 'reader': None,
                 'writer': None,
-                'bytes_moved': 0,
-                'bu': None,
-                'fh': None}
+                'bytes_moved': 0}
         
         self.mover = {'mode': const.NDMP_MOVER_MODE_NOACTION,
                  'state': const.NDMP_MOVER_STATE_IDLE,
@@ -80,6 +78,10 @@ class Record():
                     'datain_len': None,
                     'mode': None,
                     'count': 0}
+        self.bu = {'utility':None,
+                   'bu': None,
+                   'env': None,
+                   'exit': None}
         
     def __repr__(self):
         out = []

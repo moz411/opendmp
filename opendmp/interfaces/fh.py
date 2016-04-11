@@ -19,7 +19,7 @@ class add_file():
     def post(self, record):
         record.post_body.files = []
         mode = re.compile('(\d{,3})(\d{4})')
-        sep = record.data['bu'].env['PATHNAME_SEPARATOR']
+        sep = record.bu['utility'].env['PATHNAME_SEPARATOR']
         #st_dev st_ino st_mode st_nlink st_uid st_gid st_rdev st_size st_atime st_mtime st_ctime 
         # st_birthtime st_blksize st_blocks st_gen name 
         
