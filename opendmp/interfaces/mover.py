@@ -31,7 +31,7 @@ class set_record_size():
         else:
             from fractions import gcd
             record.mover['bufsize'] = gcd(record.mover['record_size'],65536)
-        if record.mover['bufsize'] not in range(1024, 65536, 1024) :
+        if record.mover['bufsize'] not in range(1024, 65536, 1024):
             stdlog.error('Tape block size not a multiple of 1024')
             record.error = const.NDMP_ILLEGAL_STATE_ERR
         else:
@@ -114,14 +114,12 @@ class listen():
             fd = ip.get_next_data_conn()
             (record.mover['host'], record.mover['port']) = fd.getsockname()
             fd.close()
-            coro = record.loop.create_server(lambda: MoverServer(record),
+            self.record.mover['server'] = MoverServer(record)
+            coro = record.loop.create_server(lambda: self.record.mover['server'],
                                                         record.mover['host'],
                                                         record.mover['port'])
-            print(coro)
-            record.mover['server'] = asyncio.async(coro)
-            print(record.mover['server'])
-            t = asyncio.wait_for(record.mover['server'],None)
-            print(t)
+            asyncio.async(coro)
+            asyncio.wait_for(record.mover['server'],None)
             record.mover['state'] = const.NDMP_MOVER_STATE_LISTEN
             
         else:

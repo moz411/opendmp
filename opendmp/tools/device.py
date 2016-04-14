@@ -1,25 +1,27 @@
-import os, errno
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 import tools.utils as ut
 
+
 class Device():
     
-    def __init__(self, path=None):
-        self.path = path
-        self.data = None
+    def __init__(self, record):
+        self.record = record
+        self.path = self.record.b.device.decode()
         self.fd = None
         self.hctl = None
         self.opened = False
         self.sgio = None
         self.mt = None
         self.datain_len = None
-        self.mode = os.O_RDWR
+        self.mode = self.record.b.mode
+        self.recvd = 0
+        self.buf = bytearray(self.record.mover['record_size']*2)
         
     def __repr__(self):
         out = []
-        out += ['%s' % const.ndmp_tape_open_mode[self.mode]]
+        #out += ['%s' % const.ndmp_tape_open_mode[self.mode]]
         out += ['path=%s' % self.path]
         out += ['opened=%s' % self.opened]
         return '%s' % ', '.join(out)
@@ -34,34 +36,45 @@ class Device():
             record.error = const.NDMP_PERMISSION_ERR
             return
         
-        if(record.h.message == const.NDMP_TAPE_OPEN):
-            self.mode = record.b.mode
-            if(record.b.mode == const.NDMP_TAPE_READ_MODE):
-                mode = 'rb'
-            elif(record.b.mode in [const.NDMP_TAPE_WRITE_MODE,
+        if(self.record.h.message == const.NDMP_TAPE_OPEN):
+            self.mode = self.record.b.mode
+            if(self.record.b.mode == const.NDMP_TAPE_READ_MODE):
+                self.mode = 'rb'
+                #self.mode = os.O_RDONLY|os.O_NONBLOCK
+            elif(self.record.b.mode in [const.NDMP_TAPE_WRITE_MODE,
                                    const.NDMP_TAPE_RAW_MODE,
                                    const.NDMP_TAPE_RAW2_MODE]):
-                mode = 'wb'
-        else:
-            mode = 'wb'
-        self.fd = open(self.path, mode, record.mover['record_size'])
+                self.mode = 'wb'
+                #self.mode = os.O_WRONLY|os.O_NONBLOCK
+        self.fd = open(self.path, self.mode, self.record.mover['record_size'])
         self.opened = True
         stdlog.info('device ' + self.path + ' opened')
+
+    @ut.try_io
+    def read(self):
+        self.data = self.fd.read(self.record.mover['record_size'])
     
     @ut.try_io
-    @ut.device_opened
+    def write(self, data):
+        self.buf.extend(data)
+        while len(self.buf) > self.record.mover['record_size']:
+            self.fd.write(self.buf[:self.record.mover['record_size']])
+            self.buf = self.buf[self.record.mover['record_size']:]
+            
+    def flush(self):
+        print(len(self.buf))
+        print(self.record.mover['record_size'])
+        while len(self.buf) > self.record.mover['record_size']:
+            self.fd.write(self.buf[self.record.mover['record_size']:])
+            self.buf = self.buf[self.record.mover['record_size']:]
+        fill = bytearray(self.record.mover['record_size'] - len(self.buf))
+        self.buf.extend(fill)
+        self.fd.write(self.buf)
+        self.fd.flush()
+        
+    @ut.try_io
     def close(self, record):
         self.fd.close()
         self.opened = False
         stdlog.info('device ' + self.path + ' closed')
-
-    @ut.try_io
-    @ut.device_opened
-    def read(self, record):
-        self.data = os.read(self.fd, record.mover['record_size'])
-    
-    @ut.try_io
-    @ut.device_opened
-    def write(self, record):
-        count = self.fd.write(self.data)
-        record.mover['bytes_moved'] += count
+        stdlog.info('Bytes written: ' + repr(self.recvd))

@@ -33,10 +33,12 @@ class connect():
             ip_int = record.b.tcp_addr[0].ip_addr
             record.data['host'] = ip.IPv4Address(ip_int)._string_from_ip_int(ip_int)
             record.data['port'] = self.record.b.tcp_addr[0].port
-            record.data['server'] = record.loop.create_connection(lambda: DataServer(record),
+            record.data['server'] = DataServer(record)
+            coro = record.loop.create_connection(lambda: record.data['server'],
                                           record.data['host'],
                                           record.data['port'])
-            asyncio.wait_for(asyncio.async(record.data['server']),None)
+            asyncio.async(coro)
+            asyncio.wait_for(record.data['server'],None)
             record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
         else:
             record.error = const.NDMP_NOT_SUPPORTED_ERR
@@ -103,18 +105,19 @@ class start_backup():
     
     @ut.valid_state(const.NDMP_DATA_STATE_CONNECTED)
     @plugins.validate
-    def request_v4(self, record, *args, **kwargs):
+    def request_v4(self, record):
         record.data['operation'] = const.NDMP_DATA_OP_BACKUP
         record.bu['env'] = record.b.env
         # Start the backup and release the Data Consumer
         asyncio.async(start_bu(record))
-        record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
         
         # Launch the File History Consumer
         #record.data['fh'] = Fh(record)
         #record.data['fh'].start()
         
     def reply_v4(self, record):
+        #TODO: improve with asyncio.set_exception_handler()
+        #record.error = const.NDMP_IO_ERR
         pass
 
     request_v3 = request_v4
@@ -194,12 +197,13 @@ class get_state():
        set.'''
     
     def reply_v4(self, record):
+        bytes_moved = record.data['bytes_moved']
         record.b.state = record.data['state']
         record.b.unsupported = (const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID |
                                 const.NDMP_DATA_STATE_EST_BYTES_REMAIN_INVALID)
         record.b.operation = record.data['operation']
         record.b.halt_reason = record.data['halt_reason']
-        record.b.bytes_processed = ut.long_long_to_quad(0)
+        record.b.bytes_processed = ut.long_long_to_quad(bytes_moved)
         # record.b.est_bytes_remain = ut.long_long_to_quad(remain)
         record.b.est_bytes_remain = ut.long_long_to_quad(0)
         record.b.est_time_remain = 0
@@ -220,7 +224,7 @@ class get_state():
         record.b.read_offset = ut.long_long_to_quad(0)
         record.b.read_length = ut.long_long_to_quad(0)
             
-        stdlog.info('Bytes processed: ' + repr(0))
+        stdlog.info('Bytes processed: ' + repr(bytes_moved))
 
     reply_v3 = reply_v4
 
@@ -233,9 +237,9 @@ class get_env():
     
     def reply_v4(self, record):
         record.b.env = []
-        for var in record.data['bu'].env:
+        for var in record.bu['bu'].env:
             record.b.env.append(type.ndmp_pval(name=repr(var).encode(), 
-                                               value=repr(record.data['bu'].env[var]).encode()))
+                                               value=repr(record.bu['bu'].env[var]).encode()))
 
     reply_v3 = reply_v4
 
@@ -250,6 +254,7 @@ class stop():
         record.data['halt_reason'] = const.NDMP_DATA_HALT_NA
         record.data['state'] = const.NDMP_DATA_STATE_IDLE
         record.data['operation'] = const.NDMP_DATA_OP_NOACTION
+        record.data['bytes_moved'] = 0
                 
     reply_v3 = reply_v4
 
@@ -261,7 +266,7 @@ class abort():
     @ut.valid_state(const.NDMP_DATA_STATE_IDLE, False)
     def reply_v4(self, record):
         try:
-            record.data['bu'].handle_close()
+            record.bu['bu'].kill()
         except AttributeError: # No BU defined
             pass
         record.data['server'].abort()

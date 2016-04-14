@@ -6,15 +6,13 @@ from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 from xdr.ndmp_type import ndmp_butype_info, ndmp_pval
 from server.bu import Backup_Utility
-import asyncio
-from shutil import make_archive
-from shlex import shlex
 
 class Tar(Backup_Utility): 
     
     name = 'tar'
     ostype = c.Unix
     executable = '/bin/tar'
+    args = '-cPvf FIFO FILESYSTEM'
     butype_info = ndmp_butype_info(
                     butype_name = b'tar',
                     default_env = [ndmp_pval(name=b'USER', value=cfg['USER'].encode()),

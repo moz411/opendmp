@@ -55,7 +55,7 @@ class NDMPServer(asyncio.Protocol):
             
     def connection_lost(self, exc):
         stdlog.info(repr(self.transport.get_extra_info('peername')) + ' closed the connection')
-        self.record.close()
+        self.transport.close()
 
     def handle_write(self,task):
         ''''Prepare and send messages using record marking standard'''

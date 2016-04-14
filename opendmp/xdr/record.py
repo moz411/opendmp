@@ -24,6 +24,7 @@ class Record():
         self.protocol_version = cfg['PREFERRED_NDMP_VERSION']
         self.connected = False
         self.device = None
+        self.bufsize = int(cfg['BUFSIZE'])
         self.p = NDMPPacker()
         self.u = NDMPUnpacker(b'None')
         # Variables added for bu plugins
@@ -292,12 +293,3 @@ class Record():
         self.b = ut.Empty()
         self.message = b''
         self.p.reset()
-        
-    def close(self):
-        # Close device if any
-        try:
-            self.device.close(self)
-        except OSError as e:
-            stdlog.error(e)
-        except (AttributeError, ValueError):
-            pass

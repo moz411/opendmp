@@ -13,15 +13,17 @@ class DataServer(asyncio.Protocol):
             
     def connection_made(self, transport):
         self.transport = transport
-        self.record.data['server'] = self
         stdlog.info('DATA> Connected to ' + repr(self.transport.get_extra_info('peername')))
+        self.transport.set_write_buffer_limits(high=655360, low=65536)
+        stdlog.debug('DATA> write_buffer_limits ' + repr(self.transport.get_write_buffer_limits()))
         
     def data_received(self, data):
         pass
             
     def connection_lost(self, exc):
-        stdlog.info('DATA>' + repr(self.transport.get_extra_info('peername')) + ' closed the connection')
-        self.record.close()
+        stdlog.info('DATA> ' + repr(self.transport.get_extra_info('peername')) + ' closed the connection')
+        self.transport.close()
         
     def abort(self):
         self.transport.abort()
+        

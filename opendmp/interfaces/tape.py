@@ -18,7 +18,7 @@ class open():
        operation is required before any other tape requests can be executed.'''
     def request_v4(self, record):
         if(ut.check_device_not_opened(record)):  return
-        record.device = Device(path=record.b.device.decode())
+        record.device = Device(record)
         record.device.open(record)
     
     def reply_v4(self, record):

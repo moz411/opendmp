@@ -6,13 +6,13 @@ from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 from tools import utils as ut
-from asyncio import coroutine
+import asyncio
 
 class connection_status():
     '''This message is sent in response to a connection establishment
         attempt.'''
 
-    @coroutine
+    @asyncio.coroutine
     @ut.post('ndmp_notify_connected_request',const.NDMP_NOTIFY_CONNECTION_STATUS)
     def post(self, record, shutdown=False):
         record.post_header.sequence = 1
@@ -25,7 +25,6 @@ class connection_status():
         else:
             record.post_body.reason = const.NDMP_SHUTDOWN
             record.post_body.text_reason = 'Aborted'
-        
 
 class data_halted():
     '''This message is used to notify the DMA that the NDMP Data Server has

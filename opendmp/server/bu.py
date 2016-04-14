@@ -2,8 +2,9 @@ from tools import utils as ut
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
-import time, asyncio, os, shlex
+import time, asyncio, os, re, shlex
 from interfaces import fh
+from unittest import mock
 
 class Backup_Utility(asyncio.SubprocessProtocol):
     
@@ -13,16 +14,17 @@ class Backup_Utility(asyncio.SubprocessProtocol):
         self.history = []
         self.env = {}
         self.fifo = ut.give_fifo()
-        self.file = os.open(self.fifo, os.O_RDONLY|os.O_NONBLOCK)
         self.recvd = 0
+        self.file = os.open(self.fifo, os.O_RDONLY|os.O_NONBLOCK)
         
     def connection_made(self, transport):
+        self.transport = transport
         stdlog.debug(repr(self) + ' connection_made')
-        self.record.loop.add_reader(self.file, self.move)
-        self.stdin = transport.get_pipe_transport(0)
+        self.record.loop.add_reader(self.file,self.move_data)
 
     def connection_lost(self, exc):
-        stdlog.debug(repr(self)  + ' connection_lost: ' + repr(exc))
+        #stdlog.debug(repr(self)  + ' connection_lost: ' + repr(exc))
+        pass
 
     def pipe_data_received(self, fd, data):
         if fd == 1:
@@ -31,22 +33,29 @@ class Backup_Utility(asyncio.SubprocessProtocol):
             stdlog.error(data.decode())
             
     def pipe_connection_lost(self, fd, exc):
-        stdlog.error(repr(self)  + ' pipe_connection_lost%r' % ((fd, exc),))
-
+        #stdlog.error(repr(self)  + ' pipe_connection_lost%r' % ((fd, exc),))
+        pass
+        
     def  process_exited(self):
-        stdlog.info(repr(self)  + ' process exited')
+        stdlog.debug(repr(self)  + ' process exited')
         ut.clean_fifo(self.fifo)
         # remove reader
         self.record.loop.remove_reader(self.file)
         # close fifo
         os.close(self.file)
-        stdlog.info('recvd ' + repr(self.recvd))
-        self.record.bu['exit'].set_result(True)
+        # get retcode
+        #retcode = self.get_returncode()
+        #print('retcode: ' + repr(retcode))
+        retcode = 0
+        # update NDMP states
+        self.record.data['state'] = const.NDMP_DATA_STATE_HALTED
+        if retcode == 0:
+            self.record.data['halt_reason'] = const.NDMP_DATA_HALT_SUCCESSFUL
+        else:
+            self.record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
+        self.record.data['server'].transport.close()
         
-    def move(self):
-        data = os.read(self.file, 1024)
-        self.recvd += len(data)
-        self.record.data['server'].transport.write(data)
+        self.record.bu['exit'].set_result(True)
         
     def update_dumpdate(self):            
         try:
@@ -57,6 +66,12 @@ class Backup_Utility(asyncio.SubprocessProtocol):
                                self.record.data['dumpdates'])
         except (OSError, ValueError, UnboundLocalError) as e:
             stdlog.error('update dumpdate failed' + repr(e))
+            
+    def move_data(self):
+        data = os.read(self.file, self.record.bufsize)
+        self.record.data['server'].transport.write(data)
+        self.record.data['bytes_moved'] += len(data)
+        
             
 @asyncio.coroutine
 def start_bu(record):
@@ -88,20 +103,27 @@ def start_bu(record):
 
     stdlog.info('Starting backup of ' + record.bu['bu'].env['FILESYSTEM'])
     
-        
     record.bu['exit'] = asyncio.Future(loop=record.loop)
 
     # Create the subprocess controlled by the protocol Backup_Utility,
     # redirect the standard output into a pipe
     
+    executable = record.bu['bu'].executable
+    args = record.bu['bu'].args
     
-    #create = record.loop.subprocess_exec(lambda: record.bu['bu'],
-    #                                     '/bin/tar','-cPvf',
-    #                                     filename,record.bu['bu'].env['FILESYSTEM'])
-    create = record.loop.subprocess_exec(lambda: record.bu['bu'],
-                                         '/bin/cp','/usr/share/mythes/th_en_US_v2.dat',record.bu['bu'].fifo)
-    transport, protocol = yield from create
-    
+    args = re.sub('FIFO', record.bu['bu'].fifo, args)
+    args = re.sub('FILESYSTEM', record.bu['bu'].env['FILESYSTEM'], args)
+    args = shlex.split(executable + ' ' + args)
+        
+    try:
+        create = record.loop.subprocess_exec(lambda: record.bu['bu'], *args)
+        transport, protocol = yield from create
+    except Exception as e:
+        stdlog.error(e)
+        record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
+        record.data['state'] = const.NDMP_DATA_STATE_HALTED
+    else:
+        record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
     # Wait for the subprocess exit using the process_exited() method
     # of the protocol
     yield from record.bu['exit']
@@ -111,6 +133,4 @@ def start_bu(record):
 
     # Read the output which was collected by the pipe_data_received()
     # method of the protocol
-    stdlog.info(protocol.history)
-
-    
+    #stdlog.info(protocol.history)
