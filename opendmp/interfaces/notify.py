@@ -6,13 +6,11 @@ from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
 from tools import utils as ut
-import asyncio
 
 class connection_status():
     '''This message is sent in response to a connection establishment
         attempt.'''
 
-    @asyncio.coroutine
     @ut.post('ndmp_notify_connected_request',const.NDMP_NOTIFY_CONNECTION_STATUS)
     def post(self, record, shutdown=False):
         record.post_header.sequence = 1
@@ -29,11 +27,11 @@ class connection_status():
 class data_halted():
     '''This message is used to notify the DMA that the NDMP Data Server has
         halted.'''
-    
+
     @ut.post('ndmp_notify_data_halted_request', const.NDMP_NOTIFY_DATA_HALTED)
     def post(self, record):
         record.post_body.reason = record.data['halt_reason']
-        record.post_body.text_reason = b'\n'.join(repr(x).encode() for x in record.data['error'])
+        record.post_body.text_reason = record.data['text_reason']
 
 class data_read():
     '''This message is used to notify the DMA that the NDMP Server wants to
@@ -53,7 +51,7 @@ class mover_halted():
     def post(self, record):
         record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
         record.post_body.reason = record.mover['halt_reason']
-        record.post_body.text_reason = b'Finished'
+        record.post_body.text_reason = record.mover['text_reason']
 
 
 class mover_paused():

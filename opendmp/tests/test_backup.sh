@@ -2,6 +2,7 @@ set -x
 NDMJOB="./ndmjob.`./distro.sh`"
 mtx -f /dev/sg10 load 1 0
 
+#$NDMJOB -d6 -c -D localhost/4m,ndmp,ndmp -F /opt/Python-3.5 -T localhost/4m,ndmp,ndmp -f /dev/nst0 -I centos.idx
 $NDMJOB -d6 -c -D localhost/4m,ndmp,ndmp -F /opt/VBoxGuestAdditions-5.0.4 -T localhost/4m,ndmp,ndmp -f /dev/nst0 -I centos.idx
 #$NDMJOB -d6 -c -D localhost/4m,ndmp,ndmp -F /boot -T ddve1/4m,ndmp,ndmp -f /dev/dd_st_c0t1l0 -I centos.idx
 

@@ -15,6 +15,7 @@ class Record():
     
     def __init__(self):
         self.loop = asyncio.get_event_loop()
+        self.ndmpserver = None
         self.challenge = random.randint(0, 2**64).to_bytes(64, 'big')
         self.h = types.ndmp_header()
         self.b = None
@@ -44,45 +45,47 @@ class Record():
                 'operation': const.NDMP_DATA_OP_NOACTION,
                 'addr_type': const.NDMP_ADDR_LOCAL,
                 'halt_reason': const.NDMP_DATA_HALT_NA,
+                'text_reason': b'Finished',
                 'server': None,
                 'reader': None,
                 'writer': None,
                 'bytes_moved': 0}
         
         self.mover = {'mode': const.NDMP_MOVER_MODE_NOACTION,
-                 'state': const.NDMP_MOVER_STATE_IDLE,
-                 'halt_reason': const.NDMP_MOVER_HALT_NA,
-                 'pause_reason': const.NDMP_MOVER_PAUSE_NA,
-                 'server': None,
-                 'addr_type': None,
-                 'host': None,
-                 'port': None,
-                 'peer': None,
-                 'record_size': 0,
-                 'record_num': 0,
-                 'bytes_moved': 0,
-                 'seek_position': 0,
-                 'bytes_left_to_read': 0,
-                 'window_length': 0, 
-                 'window_offset': 0}
+                'state': const.NDMP_MOVER_STATE_IDLE,
+                'halt_reason': const.NDMP_MOVER_HALT_NA,
+                'pause_reason': const.NDMP_MOVER_PAUSE_NA,
+                'text_reason': b'Finished',
+                'server': None,
+                'addr_type': None,
+                'host': None,
+                'port': None,
+                'peer': None,
+                'record_size': 0,
+                'record_num': 0,
+                'bytes_moved': 0,
+                'seek_position': 0,
+                'bytes_left_to_read': 0,
+                'window_length': 0, 
+                'window_offset': 0}
         
         self.fh = {'files': [],
-                  'history': None}
+                'history': None}
         
         self.tape = {'path': None,
-                    'data': None,
-                    'fd': None,
-                    'hctl': None,
-                    'opened': False,
-                    'sgio': None,
-                    'mt': None,
-                    'datain_len': None,
-                    'mode': None,
-                    'count': 0}
+                'data': None,
+                'fd': None,
+                'hctl': None,
+                'opened': False,
+                'sgio': None,
+                'mt': None,
+                'datain_len': None,
+                'mode': None,
+                'count': 0}
         self.bu = {'utility':None,
-                   'bu': None,
-                   'env': None,
-                   'exit': None}
+                'bu': None,
+                'env': None,
+                'exit': None}
         
     def __repr__(self):
         out = []

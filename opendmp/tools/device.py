@@ -17,7 +17,8 @@ class Device():
         self.datain_len = None
         self.mode = self.record.b.mode
         self.recvd = 0
-        self.buf = bytearray(self.record.mover['record_size']*2)
+        self.size = self.record.mover['record_size']
+        self.buf = bytearray(self.size*2)
         
     def __repr__(self):
         out = []
@@ -46,28 +47,26 @@ class Device():
                                    const.NDMP_TAPE_RAW2_MODE]):
                 self.mode = 'wb'
                 #self.mode = os.O_WRONLY|os.O_NONBLOCK
-        self.fd = open(self.path, self.mode, self.record.mover['record_size'])
+        self.fd = open(self.path, self.mode, self.size)
         self.opened = True
         stdlog.info('device ' + self.path + ' opened')
 
     @ut.try_io
     def read(self):
-        self.data = self.fd.read(self.record.mover['record_size'])
+        self.data = self.fd.read(self.size)
     
     @ut.try_io
     def write(self, data):
         self.buf.extend(data)
-        while len(self.buf) > self.record.mover['record_size']:
-            self.fd.write(self.buf[:self.record.mover['record_size']])
-            self.buf = self.buf[self.record.mover['record_size']:]
+        while len(self.buf) > self.size:
+            self.fd.write(self.buf[:self.size])
+            self.buf = self.buf[self.size:]
             
     def flush(self):
-        print(len(self.buf))
-        print(self.record.mover['record_size'])
-        while len(self.buf) > self.record.mover['record_size']:
-            self.fd.write(self.buf[self.record.mover['record_size']:])
-            self.buf = self.buf[self.record.mover['record_size']:]
-        fill = bytearray(self.record.mover['record_size'] - len(self.buf))
+        while len(self.buf) > self.size:
+            self.fd.write(self.buf[self.size:])
+            self.buf = self.buf[self.size:]
+        fill = bytearray(self.size - len(self.buf))
         self.buf.extend(fill)
         self.fd.write(self.buf)
         self.fd.flush()

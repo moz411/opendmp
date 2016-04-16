@@ -2,9 +2,9 @@ from tools import utils as ut
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
+from interfaces import notify
 import time, asyncio, os, re, shlex
 from interfaces import fh
-from unittest import mock
 
 class Backup_Utility(asyncio.SubprocessProtocol):
     
@@ -12,6 +12,7 @@ class Backup_Utility(asyncio.SubprocessProtocol):
     def __init__(self, record):
         self.record = record
         self.history = []
+        self.error = []
         self.env = {}
         self.fifo = ut.give_fifo()
         self.recvd = 0
@@ -28,9 +29,18 @@ class Backup_Utility(asyncio.SubprocessProtocol):
 
     def pipe_data_received(self, fd, data):
         if fd == 1:
-            self.history.append(data)
+            for line in data.decode().split('\n'):
+                try:
+                    if (len(line) > 0) : self.history.append(self.add_file(line))
+                except ValueError as e:
+                    print(line)
+                    print(e)
+            
+            if(len(self.history) > 10):
+                fh.add_file().post(self.record)
+                self.history.clear()
         elif fd == 2:
-            stdlog.error(data.decode())
+            self.error.append(data.decode())
             
     def pipe_connection_lost(self, fd, exc):
         #stdlog.error(repr(self)  + ' pipe_connection_lost%r' % ((fd, exc),))
@@ -47,14 +57,15 @@ class Backup_Utility(asyncio.SubprocessProtocol):
         #retcode = self.get_returncode()
         #print('retcode: ' + repr(retcode))
         retcode = 0
-        # update NDMP states
+        self.record.data['server'].transport.close()
+        # alert the DMA of halt
         self.record.data['state'] = const.NDMP_DATA_STATE_HALTED
         if retcode == 0:
             self.record.data['halt_reason'] = const.NDMP_DATA_HALT_SUCCESSFUL
         else:
             self.record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
-        self.record.data['server'].transport.close()
-        
+            self.record.data['text_reason'] = b'\n'.join(repr(x).encode() for x in self.error)
+        notify.data_halted().post(self.record)
         self.record.bu['exit'].set_result(True)
         
     def update_dumpdate(self):            

@@ -4,7 +4,8 @@ and process the data stream'''
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
 from xdr import ndmp_const as const
-import asyncio,os
+from interfaces import notify
+import asyncio
 
 class MoverServer(asyncio.Protocol):
     
@@ -27,6 +28,7 @@ class MoverServer(asyncio.Protocol):
         self.transport.close()
         self.record.device.flush()
         self.record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
+        notify.mover_halted().post(self.record)
 
     def abort(self):
         self.transport.abort()

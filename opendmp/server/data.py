@@ -3,7 +3,6 @@ and process the data stream'''
 
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-from xdr import ndmp_const as const
 import asyncio
 
 class DataServer(asyncio.Protocol):

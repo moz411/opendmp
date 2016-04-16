@@ -39,9 +39,10 @@ class NDMPServer(asyncio.Protocol):
         stdlog.info('Connection from ' + repr(self.transport.get_extra_info('peername')))
         # Create a new Record for each connection
         self.record = Record()
+        # Add a reference to self
+        self.record.ndmpserver = self
         # Send the initial welcome message
-        task = asyncio.async(notify.connection_status().post(self.record))
-        task.add_done_callback(self.handle_write)
+        notify.connection_status().post(self.record)
         
     def data_received(self, data):
         '''Receive and unpack message using record marking standard'''
@@ -61,7 +62,8 @@ class NDMPServer(asyncio.Protocol):
         ''''Prepare and send messages using record marking standard'''
         # Retrieve the formated NDMP message from the asyncio Task
         try:
-            data = task.result()
+            if(type(task)) == bytes: data = task
+            else : data = task.result()
         except EOFError:
             # XDR error, close connection
             stdlog.error(repr(self.transport.get_extra_info('peername')) + ': XDR Error')

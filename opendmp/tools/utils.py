@@ -223,6 +223,25 @@ def check_file_mode(st_mode):
         ftype =  const.NDMP_FILE_OTHER
     return (ftype)
 
+def check_mode_file(st_mode):
+    if (st_mode == '-'):
+        ftype =  const.NDMP_FILE_REG
+    elif (st_mode == 'd'):
+        ftype =  const.NDMP_FILE_DIR
+    elif(st_mode == 'l'):
+        ftype =  const.NDMP_FILE_SLINK
+    elif(st_mode == 'f'):
+        ftype =  const.NDMP_FILE_FIFO
+    elif(st_mode == 'b'):
+        ftype =  const.NDMP_FILE_BSPEC
+    elif(st_mode == 'c'):
+        ftype =  const.NDMP_FILE_CSPEC
+    elif(st_mode == 's'):
+        ftype =  const.NDMP_FILE_SOCK
+    else:
+        ftype =  const.NDMP_FILE_OTHER
+    return (ftype)
+
 def touchopen(filename, mode='a'):
     try:
         open(filename, "a").close() # "touch" file
@@ -306,7 +325,8 @@ def post(body_pack_func, message):
             exec('p.pack_' + body_pack_func + '(record.post_body)')
             record.server_sequence+=1
             stdlog.debug(repr(record.post_body))
-            return p.get_buffer()
+            record.ndmpserver.handle_write(p.get_buffer())
+            return
         return wrapper
     return decorate
 
@@ -317,31 +337,30 @@ def try_io(func):
     '''
     @wraps(func)
     def wrapper(*args, **kwargs):
-        record = args[1]
         try:
             r = func(*args, **kwargs)
         except (OSError, IOError) as e:
-            stdlog.error(record.device.path + ': ' + e.strerror)
+            stdlog.error(e.strerror)
             if(e.errno == errno.EACCES):
-                record.error = const.NDMP_WRITE_PROTECT_ERR
+                error = const.NDMP_WRITE_PROTECT_ERR
             elif(e.errno == errno.ENOENT):
-                record.error = const.NDMP_NO_DEVICE_ERR
+                error = const.NDMP_NO_DEVICE_ERR
             elif(e.errno == errno.EBUSY):
-                record.error = const.NDMP_DEVICE_BUSY_ERR
+                error = const.NDMP_DEVICE_BUSY_ERR
             elif(e.errno == errno.ENODEV):
-                record.error = const.NDMP_NO_DEVICE_ERR
+                error = const.NDMP_NO_DEVICE_ERR
             elif(e.errno == errno.ENOSPC):
-                record.error = const.NDMP_EOM_ERR
-                record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
-                record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
-                try:
-                    record.device.fd.flush()
-                except BlockingIOError as e:
-                    stdlog.debug(e)
+                error = const.NDMP_EOM_ERR
+                #record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
+                #record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
+                #try:
+                #    record.device.fd.flush()
+                #except BlockingIOError as e:
+                #    stdlog.debug(e)
             elif(e.errno == 123):
-                record.error = const.NDMP_NO_TAPE_LOADED_ERR
+                error = const.NDMP_NO_TAPE_LOADED_ERR
             else:
-                record.error = const.NDMP_IO_ERR
+                error = const.NDMP_IO_ERR
         else:
             return r
     return wrapper
