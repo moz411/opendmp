@@ -8,7 +8,6 @@ from xdr import ndmp_type as types
 from server.bu import Backup_Utility
 from tools import utils as ut
 import time,re,pwd,grp
-import asyncio
 
 class Tar(Backup_Utility): 
     
@@ -34,7 +33,7 @@ class Tar(Backup_Utility):
                           )
                     )
     
-    def add_file(self, line):
+    async def add_file(self, line):
         '''drwxr-xr-x root/root         0 2016-04-04 19:14 /opt/VBoxGuestAdditions-5.0.4/'''
         (fattr,owner_group,size,ctime1,ctime2,file) = line.split()
         file_stat = types.ndmp_file_stat_v3(

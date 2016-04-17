@@ -11,6 +11,7 @@ from interfaces import notify
 def start_NDMPServer():
     try:
         loop = asyncio.get_event_loop()
+        loop.set_debug(True)
         coro = loop.create_server(NDMPServer, cfg['HOST'], int(cfg['PORT']))
         server = loop.run_until_complete(coro)
         stdlog.info('Start NDMP server on {}'.format(server.sockets[0].getsockname()))
@@ -29,11 +30,12 @@ def start_NDMPServer():
         stdlog.debug('*'*60)
         
 class NDMPServer(asyncio.Protocol):
-    MAX_LENGTH = 99999
-    recvd = b''
-    prefixLength = 4
-    structFormat = '>L'
-            
+    def __init__(self):
+        self.MAX_LENGTH = 99999
+        self.recvd = b''
+        self.prefixLength = 4
+        self.structFormat = '>L'
+    
     def connection_made(self, transport):
         self.transport = transport
         stdlog.info('Connection from ' + repr(self.transport.get_extra_info('peername')))
@@ -42,7 +44,7 @@ class NDMPServer(asyncio.Protocol):
         # Add a reference to self
         self.record.ndmpserver = self
         # Send the initial welcome message
-        notify.connection_status().post(self.record)
+        asyncio.ensure_future(notify.connection_status().post(self.record))
         
     def data_received(self, data):
         '''Receive and unpack message using record marking standard'''
@@ -51,26 +53,20 @@ class NDMPServer(asyncio.Protocol):
             length = struct.unpack(self.structFormat, self.recvd[:self.prefixLength])[0]
             message = self.recvd[self.prefixLength:length + self.prefixLength]
             self.recvd = self.recvd[length + self.prefixLength:]
-            task = asyncio.async(self.record.run_task(message))
-            task.add_done_callback(self.handle_write)
+        asyncio.ensure_future(self.record.run_task(message))
+        self.future = asyncio.Future()
+        self.future.add_done_callback(self.handle_write)
             
     def connection_lost(self, exc):
         stdlog.info(repr(self.transport.get_extra_info('peername')) + ' closed the connection')
         self.transport.close()
 
-    def handle_write(self,task):
+    def handle_write(self,data):
         ''''Prepare and send messages using record marking standard'''
         # Retrieve the formated NDMP message from the asyncio Task
-        try:
-            if(type(task)) == bytes: data = task
-            else : data = task.result()
-        except EOFError:
-            # XDR error, close connection
-            stdlog.error(repr(self.transport.get_extra_info('peername')) + ': XDR Error')
-            self.transport.close()
-        else:
-            # Prepare the XDR header
-            x = len(data) | 0x80000000
-            header = struct.pack(self.structFormat, x | len(data))
-            # Send the message
-            self.transport.write(header + data)
+        # Prepare the XDR header
+        if type(data) is not bytes: data = data.result()
+        x = len(data) | 0x80000000
+        header = struct.pack(self.structFormat, x | len(data))
+        # Send the message
+        self.transport.write(header + data)

@@ -10,11 +10,12 @@ from tools import utils as ut
 from logging.handlers import QueueHandler
 from logging import Handler
 
+
 class message():
     '''This post sends an informational message to the DMA'''
     
     @ut.post('ndmp_log_message_request_v4',const.NDMP_LOG_MESSAGE)
-    def post(self, record):
+    async def post(self, record):
         if record.data['bu'].retcode == 0:
             record.post_body.log_type = const.NDMP_LOG_NORMAL
         else:
@@ -28,12 +29,12 @@ class message():
 class file(QueueHandler):
     '''This post sends a file recovered message to the DMA'''
     
-    def __init__(self, record):
+    async def __init__(self, record):
         Handler.__init__(self)
         self.queue = record.queue
     
     @ut.post('ndmp_log_file_request_v4',const.NDMP_MESSAGE_POST)
-    def post(self, record):
+    async def post(self, record):
         record.post_body.name = record.data['file']
         record.post_body.recovery_status = record.data['recovery']['status']
         

@@ -15,19 +15,19 @@ class add_file():
         attribute entries to the file history'''
 
     @ut.post('ndmp_fh_add_file_request_v3',const.NDMP_FH_ADD_FILE)
-    def post(self, record):
+    async def post(self, record):
         record.post_body.files = record.bu['bu'].history
 
 class add_dir():
     '''This message is used to report name and inode information for backed
         up files'''
     
-    def post(self, record):
+    async def post(self, record):
         pass
 
 class add_node():
     '''This request adds a list of file attribute entries to the file
         history'''
     
-    def post(self, record):
+    async def post(self, record):
         pass

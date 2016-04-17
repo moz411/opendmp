@@ -9,6 +9,8 @@ from xdr.ndmp_pack import NDMPPacker
 from xdr.ndmp_type import (ndmp_fs_info_v4, ndmp_u_quad,
                            ndmp_pval, ndmp_device_info_v4,
                            ndmp_device_capability_v3)
+import inspect
+from importlib.util import find_spec, module_from_spec
    
 class Empty():
     pass
@@ -319,10 +321,11 @@ def post(body_pack_func, message):
             record.post_header.reply_sequence = 0
             record.post_header.time_stamp = int(time.time())
             record.post_header.error = const.NDMP_NO_ERR
-            exec('record.post_body = types.' + body_pack_func + '()')
-            func(*args, **kwargs)
+            record.post_body = find_interface('xdr.ndmp_type',body_pack_func)
+            yield from func(*args, **kwargs)
             p.pack_ndmp_header(record.post_header)
-            exec('p.pack_' + body_pack_func + '(record.post_body)')
+            mymodule = ([obj for cl, obj in inspect.getmembers(p) if cl == 'pack_'+body_pack_func])[0]
+            mymodule(record.post_body)
             record.server_sequence+=1
             stdlog.debug(repr(record.post_body))
             record.ndmpserver.handle_write(p.get_buffer())
@@ -379,3 +382,17 @@ def device_opened(func):
         else:
             return r
     return wrapper
+
+def find_interface(package, name, func=None):
+    '''Find the module to import corresponding to the message
+    Create an instance of the parent class in interfaces package'''
+    spec = find_spec(package)
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    myclass = ([obj for cl, obj in inspect.getmembers(module) if cl == name])[0]
+    inst = myclass()
+    if func: 
+        mymodule = ([obj for cl, obj in inspect.getmembers(myclass) if cl == func])[0]
+        return(inst, mymodule)
+    else:
+        return(inst)

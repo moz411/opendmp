@@ -64,7 +64,7 @@ class NDMPDaemon(Daemon):
     def run(self):
         while True:
             start_NDMPServer()
-                
+            
 if __name__ == "__main__":
     if not (os.path.exists(cfg['RUNDIR'])):
         try:

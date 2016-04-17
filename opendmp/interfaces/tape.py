@@ -16,12 +16,12 @@ import tools.mtio
 class open():
     '''This request opens the tape device in the specified mode. This
        operation is required before any other tape requests can be executed.'''
-    def request_v4(self, record):
+    async def request_v4(self, record):
         if(ut.check_device_not_opened(record)):  return
         record.device = Device(record)
         record.device.open(record)
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         pass
     
     request_v3 = request_v4
@@ -29,10 +29,10 @@ class open():
 
 class close():
     '''This request closes the tape drive.'''
-    def request_v4(self, record):
+    async def request_v4(self, record):
         pass
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         if not(ut.check_device_opened(record)): return
         record.device.close(record)
 
@@ -42,7 +42,7 @@ class close():
 class get_state():
     '''This request returns the state of the tape drive interface.'''
 
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         if ut.check_device_opened(record):
             mt = tools.mtio.MTIOCGET(record)
             record.b.unsupported = mt['unsupported']
@@ -71,11 +71,11 @@ class get_state():
 
 class mtio():
     '''This request provides access to common magnetic tape I/O operations.'''
-    def request_v4(self, record):
+    async def request_v4(self, record):
         if not(ut.check_device_opened(record)): return
         tools.mtio.MTIOCTOP(record)
             
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         if not(ut.check_device_opened(record)): 
             record.b.resid_count = 0
         else:
@@ -87,14 +87,14 @@ class mtio():
 
 class write():
     '''This request writes data to the tape device.'''
-    def request_v4(self, record):
+    async def request_v4(self, record):
         if not(ut.check_device_opened(record)): 
             return
         else:
             record.device.data = record.b.data_out
             record.device.write(record)
 
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         if not(ut.check_device_opened(record)): 
             record.b.count = 0
         else:
@@ -105,12 +105,12 @@ class write():
 
 class read():
     '''This request reads data from the tape drive.'''
-    def request_v4(self, record):
+    async def request_v4(self, record):
         if not(ut.check_device_opened(record)): return
         record.device.count = record.b.count
         record.device.read(record)
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         if not(ut.check_device_opened(record)): 
             record.b.data_in = 0
         else:

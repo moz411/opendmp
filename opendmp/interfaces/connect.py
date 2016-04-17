@@ -16,17 +16,18 @@ from tools.log import Log; stdlog = Log.stdlog
 import hashlib
 import xdr.ndmp_const as const
 from xdr.ndmp_type import ndmp_auth_data, ndmp_auth_md5
+import asyncio
 
 
 class open():
     '''This message negotiates the protocol version to be used between the
         DMA and NDMP Server. '''
     
-    def request_v4(self, record):
+    async def request_v4(self, record):
         record.protocol_version = 'v' + repr(record.b.protocol_version)
         
 
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         if(record.protocol_version in cfg['SUPPORTED_NDMP_VERSIONS']):
             record.error = const.NDMP_NO_ERR
         else:
@@ -39,10 +40,10 @@ class open():
 class client_auth():
     '''This request authenticates the DMA to a NDMP Server.'''
     
-    def request_v4(self, record):
+    async def request_v4(self, record):
         record.auth = record.b
 
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.auth = None
 
     request_v3 = request_v4
@@ -53,14 +54,14 @@ class server_auth():
     '''This optional request is used by the DMA to force the NDMP Server to
         authenticate itself'''
 
-    def request_v4(self, record):
+    async def request_v4(self, record):
         try:
             assert(record.b.client_attr.auth_type == const.NDMP_AUTH_MD5)
             record.challenge = record.b.client_attr.challenge
         except(AssertionError):
             record.error = const.NDMP_ILLEGAL_ARGS_ERR
         
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         # TODO: still not working with ndmfs test
         m = hashlib.md5()
         password = cfg['PASSWORD'].encode()
@@ -77,10 +78,10 @@ class server_auth():
 class close():
     '''This message is used when the client wants to close the NDMP
         connection'''
-    def request_v4(self, record):
+    async def request_v4(self, record):
         pass
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         pass
 
     request_v3 = request_v4

@@ -7,11 +7,12 @@ from subprocess import Popen, PIPE
 import xdr.ndmp_const as const
 import tools.utils as ut
 from xdr.ndmp_type import (ndmp_auth_attr, ndmp_class_list)
+import asyncio
 
 class get_host_info():
     '''This request is used to get information about the host on which the NDMP Server is running.'''
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.b.os_type = c.os_type.encode()
         record.b.os_vers = c.os_vers.encode()
         record.b.hostid = c.hostid
@@ -23,7 +24,7 @@ class get_host_info():
 class get_server_info():
     '''This request is used to get information about the NDMP Server implementation.'''
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         if(record.connected):
             record.b.vendor_name = c.vendor_name.encode()
             record.b.product_name = c.product_name.encode()
@@ -39,7 +40,7 @@ class get_server_info():
 class get_connection_type():
     '''This request returns a list of the data connection types supported by the NDMP Server.'''
       
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         #record.b.addr_types = [const.NDMP_ADDR_LOCAL, const.NDMP_ADDR_TCP, const.NDMP_ADDR_IPC]
         record.b.addr_types = [const.NDMP_ADDR_LOCAL, const.NDMP_ADDR_TCP]
 
@@ -48,10 +49,10 @@ class get_connection_type():
 class get_auth_attr():
     '''This message is used by the DMA to obtain the attributes of the
         authentication methods supported by the server.'''
-    def request_v4(self, record):
+    async def request_v4(self, record):
         pass
         
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.b.server_attr = ndmp_auth_attr(const.NDMP_AUTH_MD5, record.challenge)
     
     request_v3 = request_v4    
@@ -62,14 +63,14 @@ class get_butype_info():
     '''This message is used to query the backup types supported by the NDMP
         Server and the capability of each supported backup type.'''
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.b.butype_info = []
         # Load the available BUs as plugins
         for bu in record.bu_plugins:
             if c.system in bu.ostype:
                 record.b.butype_info.append(bu.butype_info)
         
-    def mask(self, v):
+    async def mask(self, v):
         return bin(v <<32)
     
     reply_v3 = reply_v4
@@ -78,7 +79,7 @@ class get_fs_info():
     '''This message is used to query information about the file systems on
         the NDMP Server host.'''
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.b.fs_info = []
         if(c.system in c.Unix):
             try:
@@ -103,7 +104,7 @@ class get_tape_info():
     '''This message is used to query information about the tape devices
                connected to the NDMP Server host.'''
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.b.tape_info = []
         
         if(c.system == 'Linux'):
@@ -125,7 +126,7 @@ class get_scsi_info():
     '''This message is used to query information about the SCSI media
                changer devices connected to the NDMP Server host.'''
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.b.scsi_info = []
         
         if(c.system == 'Linux'):
@@ -147,7 +148,7 @@ class get_scsi_info():
 class get_ext_list():
     '''NDMP_CONFIG_GET_EXT_LIST is used to request which classes of
        extensions and versions are available.'''
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         
         # TODO: improve this very simple module loader
         classlist = ndmp_class_list()
@@ -177,10 +178,10 @@ class set_ext_list():
     '''After a successful reply to the NDMP_CONFIG_GET_EXT_LIST the DMA
        SHOULD issue a NDMP_CONFIG_SET_EXT_LIST request to select which
        extensions, and which version of each extension it will use.'''
-    def request_v4(self, record):
+    async def request_v4(self, record):
         pass
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.error = const.NDMP_CLASS_NOT_SUPPORTED_ERR
 
     request_v3 = request_v4

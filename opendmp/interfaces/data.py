@@ -7,10 +7,9 @@ of data that can be written to the tape device.
 '''
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-import sys, subprocess, shlex, socket, os, asyncio, traceback, functools
+import asyncio, re, shlex
 from server.data import DataServer
-from server.bu import start_bu
-from server.fh import Fh
+from interfaces import notify
 from xdr import ndmp_const as const, ndmp_type as type
 from tools import utils as ut, ipaddress as ip, plugins
 
@@ -25,7 +24,7 @@ class connect():
         establish a data connection to a Tape Server or peer Data Server'''
     
     @ut.valid_state(const.NDMP_DATA_STATE_IDLE)
-    def request_v4(self, record):
+    async def request_v4(self, record):
         self.record = record
         record.data['addr_type'] = record.b.addr_type
         if record.data['addr_type'] == const.NDMP_ADDR_TCP:
@@ -34,16 +33,14 @@ class connect():
             record.data['host'] = ip.IPv4Address(ip_int)._string_from_ip_int(ip_int)
             record.data['port'] = self.record.b.tcp_addr[0].port
             record.data['server'] = DataServer(record)
-            coro = record.loop.create_connection(lambda: record.data['server'],
+            await record.loop.create_connection(lambda: record.data['server'],
                                           record.data['host'],
                                           record.data['port'])
-            asyncio.async(coro)
-            asyncio.wait_for(record.data['server'],None)
             record.data['state'] = const.NDMP_DATA_STATE_CONNECTED
         else:
             record.error = const.NDMP_NOT_SUPPORTED_ERR
             
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         pass
 
     request_v3 = request_v4
@@ -58,23 +55,22 @@ class listen():
        Server is listening at.'''
     
     @ut.valid_state(const.NDMP_DATA_STATE_IDLE)
-    def request_v4(self, record):
+    async def request_v4(self, record):
         self.record = record
         record.data['addr_type'] = record.b.addr_type
         if record.data['addr_type'] == const.NDMP_ADDR_TCP:
             fd = ip.get_next_data_conn()
             record.data['host'], record.data['port'] = fd.getsockname()
             fd.close()
-            record.data['server'] = record.loop.create_server(DataServer, 
+            record.data['server'] = await record.loop.create_server(DataServer, 
                                                        record.data['host'], 
                                                        record.data['port'])
-            asyncio.wait_for(asyncio.async(record.data['server']),None)
             record.data['state'] = const.NDMP_DATA_STATE_LISTEN
         else:
             record.error = const.NDMP_NOT_SUPPORTED_ERR
         
     @ut.valid_state(const.NDMP_DATA_STATE_LISTEN)
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.b.connect_addr = type.ndmp_addr_v4()
         record.b.connect_addr.addr_type = record.data['addr_type']
         if(record.data['addr_type'] == const.NDMP_ADDR_TCP):
@@ -85,7 +81,7 @@ class listen():
             record.data['peer'] = tcp_addr
     
     @ut.valid_state(const.NDMP_DATA_STATE_LISTEN)
-    def reply_v3(self, record):
+    async def reply_v3(self, record):
         record.b.connect_addr = type.ndmp_addr_v4()
         record.b.connect_addr.addr_type = record.data['addr_type']
         if(record.data['addr_type'] == const.NDMP_ADDR_TCP):
@@ -97,7 +93,7 @@ class listen():
 
     request_v3 = request_v4
 
-class start_backup():
+class start_backup(asyncio.SubprocessProtocol):
     '''This request is used by the DMA to instruct the Data Server to
        initiate a backup operation and begin transferring backup data from
        the file system represented by this Data Server to a Tape Server or
@@ -105,19 +101,39 @@ class start_backup():
     
     @ut.valid_state(const.NDMP_DATA_STATE_CONNECTED)
     @plugins.validate
-    def request_v4(self, record):
+    async def request_v4(self, record):
+        record.bu['bu'] = record.bu['utility'](record)
         record.data['operation'] = const.NDMP_DATA_OP_BACKUP
-        record.bu['env'] = record.b.env
-        # Start the backup and release the Data Consumer
-        asyncio.async(start_bu(record))
         
-        # Launch the File History Consumer
-        #record.data['fh'] = Fh(record)
-        #record.data['fh'].start()
+        # Extract all env variables, overwrite default_env
+        for pval in record.bu['bu'].butype_info.default_env:
+            name = pval.name.decode().strip()
+            value = pval.value.decode().strip()
+            record.bu['bu'].env[name] =  value
+        for pval in record.b.env:
+            name = pval.name.decode().strip()
+            value = pval.value.decode('utf-8', 'replace').strip()
+            record.bu['bu'].env[name] =  value
+                
+        # Retrieving FILESYSTEM to backup or restore
+        if(record.bu['bu'].env['FILES']):
+            record.bu['bu'].env['FILESYSTEM'] = record.bu['bu'].env['FILES']
+
+        executable = record.bu['bu'].executable
+        args = record.bu['bu'].args
         
-    def reply_v4(self, record):
-        #TODO: improve with asyncio.set_exception_handler()
-        #record.error = const.NDMP_IO_ERR
+        args = re.sub('FIFO', record.bu['bu'].fifo, args)
+        args = re.sub('FILESYSTEM', record.bu['bu'].env['FILESYSTEM'], args)
+        args = shlex.split(executable + ' ' + args)
+        
+        (transport,_) = await record.loop.subprocess_exec(lambda: record.bu['bu'], 
+                                       stdout=asyncio.subprocess.PIPE,
+                                       stderr=asyncio.subprocess.PIPE,
+                                       *args)
+        
+        stdlog.info('Starting backup of ' + record.bu['bu'].env['FILESYSTEM'])
+        
+    async def reply_v4(self, record):
         pass
 
     request_v3 = request_v4
@@ -132,42 +148,10 @@ class start_recover():
     
     @ut.valid_state(const.NDMP_DATA_STATE_CONNECTED)
     @plugins.validate
-    def request_v4(self, record):
-        record.data['operation'] = const.NDMP_DATA_OP_RECOVER
-        
-        # Verify we have all variables for recover operation
-        try:
-            record.data['nlist'] = {
-                        'original_path': bytes.decode(record.b.nlist[0].original_path).strip(),
-                        'destination_dir': bytes.decode(record.b.nlist[0].destination_dir).strip(),
-                        'new_name': bytes.decode(record.b.nlist[0].new_name).strip(),
-                        'other_name': bytes.decode(record.b.nlist[0].other_name).strip(),
-                        'node': ut.quad_to_long_long(record.b.nlist[0].node),
-                        'fh_info': ut.quad_to_long_long(record.b.nlist[0].fh_info)
-                        }
-        except IndexError:
-            stdlog.error('Invalid informations sent by DMA')
-            record.error = const.NDMP_ILLEGAL_ARGS_ERR
-            return
-        
-        # Generate the command line
-        command_line = record.bu.recover(record)
-        stdlog.debug(command_line)
-        
-        # release the Data Consumer
-        self.record.data['sock'].file = open(record.bu['fifo'],'wb')
-        stdlog.info('Starting recover of ' + self.record.data['env']['FILESYSTEM'])
-        record.data['state'] = const.NDMP_DATA_STATE_ACTIVE
-        
-        # Launch the recover process
-        with open(record.bu['fifo'] + '.err', 'w', encoding='utf-8') as error:
-            record.data['process'] = subprocess.Popen(shlex.split(command_line),
-                                                   stdin=subprocess.PIPE,
-                                                   stderr=error,
-                                                   cwd=record.data['nlist']['destination_dir'],
-                                                   shell=False)
+    async def request_v4(self, record):
+        pass
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         pass
 
     request_v3 = request_v4
@@ -181,10 +165,10 @@ class start_recover_filehist():
        as during backup operations. No changes are made to the local file
        system.'''
     
-    def request_v4(self, record):
+    async def request_v4(self, record):
         pass
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.error = const.NDMP_NOT_SUPPORTED_ERR
     
     request_v3 = request_v4
@@ -196,7 +180,7 @@ class get_state():
        Server's operational state as represented by the Data Server variable
        set.'''
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         bytes_moved = record.data['bytes_moved']
         record.b.state = record.data['state']
         record.b.unsupported = (const.NDMP_DATA_STATE_EST_TIME_REMAIN_INVALID |
@@ -227,6 +211,8 @@ class get_state():
         stdlog.info('Bytes processed: ' + repr(bytes_moved))
 
     reply_v3 = reply_v4
+    
+    
 
 class get_env():
     '''This request is used by the DMA to obtain the backup environment
@@ -235,7 +221,7 @@ class get_env():
        backup operation but MAY be issued during or after a recovery
        operation as well.'''
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.b.env = []
         for var in record.bu['bu'].env:
             record.b.env.append(type.ndmp_pval(name=repr(var).encode(), 
@@ -250,7 +236,7 @@ class stop():
        the IDLE state.'''
     
     @ut.valid_state(const.NDMP_DATA_STATE_HALTED)
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.data['halt_reason'] = const.NDMP_DATA_HALT_NA
         record.data['state'] = const.NDMP_DATA_STATE_IDLE
         record.data['operation'] = const.NDMP_DATA_OP_NOACTION
@@ -264,7 +250,7 @@ class abort():
        if present, and transition the Data Server to the HALTED state.'''
     
     @ut.valid_state(const.NDMP_DATA_STATE_IDLE, False)
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         try:
             record.bu['bu'].kill()
         except AttributeError: # No BU defined

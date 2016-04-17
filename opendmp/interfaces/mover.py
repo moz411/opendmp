@@ -12,7 +12,6 @@ from tools.config import Config; cfg = Config.cfg; c = Config
 from tools import utils as ut, ipaddress as ip
 from xdr import ndmp_const as const, ndmp_type as type
 from server.mover import MoverServer
-import asyncio
 
 
 class set_record_size():
@@ -20,7 +19,7 @@ class set_record_size():
        mover-initiated tape read and write operations.'''
     
     @ut.valid_state(const.NDMP_MOVER_STATE_IDLE)
-    def request_v4(self, record):
+    async def request_v4(self, record):
         record.mover['record_size'] = record.b.len
         record.mover['window_length'] = 0
         record.mover['window_offset'] = 0
@@ -38,7 +37,7 @@ class set_record_size():
             stdlog.info('Will use a socket buffer of ' + 
                         repr(record.mover['bufsize']))
 
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         pass
 
     request_v3 = request_v4
@@ -51,14 +50,14 @@ class set_window():
        manipulation.'''
     
     @ut.valid_state([const.NDMP_MOVER_STATE_IDLE,const.NDMP_MOVER_STATE_PAUSED])
-    def request_v4(self, record):
+    async def request_v4(self, record):
         if(record.mover['record_size'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
         else:
             record.mover['window_offset'] = ut.quad_to_long_long(record.b.offset)
             record.mover['window_length'] = ut.quad_to_long_long(record.b.length)
 
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         pass
 
     request_v3 = request_v4
@@ -69,7 +68,7 @@ class connect():
        data connection to a Data Server or peer mover.'''
     
     @ut.valid_state(const.NDMP_MOVER_STATE_IDLE)
-    def request_v4(self, record):
+    async def request_v4(self, record):
         record.mover['mode'] = record.b.mode
         record.mover['addr'] = record.b.addr
         if(record.mover['record_size'] == 0):
@@ -92,7 +91,7 @@ class connect():
                 stdlog.error('Cannot connect to ' + repr(record.b.addr.tcp_addr) + 
                              ': ' + repr(e))
             
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         pass
 
     request_v3 = request_v4
@@ -106,7 +105,7 @@ class listen():
        listening at.'''
     
     @ut.valid_state(const.NDMP_MOVER_STATE_IDLE)
-    def request_v4(self, record):
+    async def request_v4(self, record):
         self.record = record
         record.mover['addr_type'] = record.b.addr_type
         record.mover['mode'] = record.b.mode
@@ -114,19 +113,17 @@ class listen():
             fd = ip.get_next_data_conn()
             (record.mover['host'], record.mover['port']) = fd.getsockname()
             fd.close()
-            self.record.mover['server'] = MoverServer(record)
-            coro = record.loop.create_server(lambda: self.record.mover['server'],
+            record.mover['server'] = MoverServer(record)
+            await record.loop.create_server(lambda: self.record.mover['server'],
                                                         record.mover['host'],
                                                         record.mover['port'])
-            asyncio.async(coro)
-            asyncio.wait_for(record.mover['server'],None)
             record.mover['state'] = const.NDMP_MOVER_STATE_LISTEN
             
         else:
             record.error = const.NDMP_NOT_SUPPORTED_ERR
             
     @ut.valid_state(const.NDMP_MOVER_STATE_LISTEN)
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.b.connect_addr = type.ndmp_addr_v4()
         record.b.connect_addr.addr_type = record.mover['addr_type']
         if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
@@ -138,7 +135,7 @@ class listen():
             record.b.connect_addr.tcp_addr.append(record.mover['tcp_addr'])
             
     @ut.valid_state(const.NDMP_MOVER_STATE_LISTEN)        
-    def reply_v3(self, record):
+    async def reply_v3(self, record):
         record.b.connect_addr = type.ndmp_addr_v4()
         record.b.connect_addr.addr_type = record.mover['addr_type']
         if(record.mover['addr_type'] == const.NDMP_ADDR_TCP):
@@ -157,13 +154,13 @@ class read():
        subsystem to the data connection.'''
     
     @ut.valid_state(const.NDMP_MOVER_STATE_ACTIVE)
-    def request_v4(self, record):
+    async def request_v4(self, record):
         if(record.mover['window_length'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
         else:
             pass
             
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         pass
 
     request_v3 = request_v4
@@ -174,7 +171,7 @@ class get_state():
        Mover's operational state as represented by the standard mover
        variable set.'''
     
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         bytes_moved = record.mover['bytes_moved']
         record.b.state = record.mover['state']
         record.b.mode =  record.mover['mode']
@@ -206,7 +203,7 @@ class spec_continue():
        of data stream between the data connection and the tape subsystem.'''
     
     @ut.valid_state(const.NDMP_MOVER_STATE_PAUSED)
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         if(record.mover['window_length'] == 0):
             record.error = const.NDMP_PRECONDITION_ERR
         else:
@@ -219,7 +216,7 @@ class close():
        close the current data connection and transition to the HALTED state.'''
     
     @ut.valid_state(const.NDMP_MOVER_STATE_PAUSED)
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
         record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
     reply_v3 = reply_v4
 
@@ -229,7 +226,8 @@ class stop():
        transition the mover to the IDLE state.'''
     
     @ut.valid_state(const.NDMP_MOVER_STATE_IDLE, False)
-    def reply_v4(self, record):
+    async def reply_v4(self, record):
+        record.mover['server'].transport.close()
         record.mover['mode'] = const.NDMP_MOVER_MODE_NOACTION
         record.mover['state'] = const.NDMP_MOVER_STATE_IDLE
         record.mover['halt_reason'] = const.NDMP_MOVER_HALT_NA
@@ -248,8 +246,8 @@ class abort():
        present, and transition the mover to the to the HALTED state.'''
     
     @ut.valid_state(const.NDMP_MOVER_STATE_IDLE, False)
-    def reply_v4(self, record):
-        record.mover['server'].cancel()
+    async def reply_v4(self, record):
+        record.mover['server'].transport.close()
         record.mover['mode'] = const.NDMP_MOVER_MODE_NOACTION
         record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
         record.mover['halt_reason'] = const.NDMP_MOVER_HALT_ABORTED

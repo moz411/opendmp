@@ -11,8 +11,7 @@ class MoverServer(asyncio.Protocol):
     
     def __init__(self, record):
         self.record = record
-        #self.test = os.open('/tmp/test.tar', 'wb')
-            
+
     def connection_made(self, transport):
         self.transport = transport
         stdlog.info('MOVER> Connected to ' + repr(self.transport.get_extra_info('peername')))
@@ -20,15 +19,19 @@ class MoverServer(asyncio.Protocol):
         
     def data_received(self, data):
         self.record.device.write(data)
-        #os.write(self.test, data)
         self.record.mover['bytes_moved'] += len(data)
             
     def connection_lost(self, exc):
         stdlog.info('MOVER>' + repr(self.transport.get_extra_info('peername')) + ' closed the connection')
-        self.transport.close()
         self.record.device.flush()
         self.record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
-        notify.mover_halted().post(self.record)
+        asyncio.ensure_future(notify.mover_halted().post(self.record))
+        
+    def pause_writing(self):
+        stdlog.debug(repr(self) + ' pause writing')
+        
+    def resume_writing(self):
+        stdlog.debug(repr(self) + ' resume writing')
 
     def abort(self):
-        self.transport.abort()
+        pass

@@ -1,7 +1,7 @@
 import struct, time, random, hashlib, traceback
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-from xdr import ndmp_const as const, ndmp_type as types
+from xdr import ndmp_const as const, ndmp_type
 from tools import utils as ut
 from tools import plugins
 from xdrlib import Error as XDRError
@@ -17,7 +17,7 @@ class Record():
         self.loop = asyncio.get_event_loop()
         self.ndmpserver = None
         self.challenge = random.randint(0, 2**64).to_bytes(64, 'big')
-        self.h = types.ndmp_header()
+        self.h = ndmp_type.ndmp_header()
         self.b = None
         self.error = const.NDMP_NO_ERR
         self.server_sequence = 1
@@ -121,9 +121,7 @@ class Record():
         return '%s' % ', '.join(out)
     __str__ = __repr__   
     
-    @asyncio.coroutine
-    def run_task(self, message):
-        
+    async def run_task(self, message):
         # First part: decode and execute the request
         # Unpack header
         self.u.reset(message)
@@ -137,7 +135,7 @@ class Record():
         
         # Unpack body
         if(self.verify_sequence()):
-            self.body()
+            await self.body()
             
         # Second part: prepare and send the response    
         self.reset()
@@ -153,7 +151,7 @@ class Record():
         
         # Prepare and pack body
         if(self.verify_connected() and self.error == const.NDMP_NO_ERR):
-            self.body()
+            await self.body()
             
         # debug
         stdlog.debug(repr(self))
@@ -161,9 +159,10 @@ class Record():
         stdlog.debug('')
         
         # return the encoded answer
-        return self.p.get_buffer()
+        res = self.p.get_buffer()
+        self.ndmpserver.future.set_result(res)
         
-    def body(self):
+    async def body(self):
         """
         Depending of the NDMP message
         received, will load the corresponding src/interfaces/<interface>.py
@@ -172,22 +171,31 @@ class Record():
         """
         message = const.ndmp_message[self.h.message].lower()
         # Exceptions for names that conflict with reserved keywords
-        interface = 'interfaces.' + str(message.split('_',2)[1])
-        func = str(message.split('_',2)[2])
+        package = 'interfaces.'+str(message.split('_',2)[1])
+        name = str(message.split('_',2)[2])
+        msgtype = 'reply_' if self.h.message_type == const.NDMP_MESSAGE_REPLY else 'request_'
         if(self.h.message in [const.NDMP_MOVER_CONTINUE]):
-            func = ('spec_' + func)
-
+            name = ('spec_' + name)
+            
+        # Retrieve the module to load
         try: 
-            exec('from ' + interface + ' import ' + func)
-        except:
+            interface, func = ut.find_interface(package, name, msgtype+self.protocol_version)
+        except ImportError:
             self.error =  const.NDMP_NOT_SUPPORTED_ERR
-            stdlog.error(message + '_reply not supported')
+            stdlog.error(message + ' not supported')
+            stdlog.debug(package)
+            stdlog.debug(name)
+            stdlog.debug(msgtype)
+            stdlog.debug(self.protocol_version)
             stdlog.debug(traceback.print_exc())
             return
+        except IndexError:
+            pass
 
         if (self.h.message_type == const.NDMP_MESSAGE_REPLY):
             try:
-                exec('self.b = types.' + message + '_reply_' + self.protocol_version + '()')
+                self.b = ut.find_interface('xdr.ndmp_type', message+'_reply_'+self.protocol_version)
+                #exec('self.b = types.' + message + '_reply_' + self.protocol_version + '()')
             except NameError:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
                 stdlog.error(message + '_reply not supported')
@@ -196,10 +204,11 @@ class Record():
             
             try:
                 #run "reply" function
-                exec(func + '().reply_' + self.protocol_version + '(self)')
+                #exec(func + '().reply_' + self.protocol_version + '(self)')
+                await interface.reply_v4(self)
             except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR
-                stdlog.error(message + '_reply not supported')
+                stdlog.error(message + ' not supported')
                 stdlog.debug(traceback.print_exc())
                 return
             
@@ -225,14 +234,17 @@ class Record():
                                      const.NDMP_DATA_ABORT, const.NDMP_MOVER_GET_STATE,
                                      const.NDMP_MOVER_CONTINUE, const.NDMP_MOVER_CLOSE,
                                      const.NDMP_MOVER_ABORT, const.NDMP_MOVER_STOP, const.NDMP_CONNECT_CLOSE]):
+            
             try:
                 #prepare unpack function
                 exec('self.b  = self.u.unpack_' + message + '_request_' + self.protocol_version +'()')
+                
                 # debug
                 stdlog.debug('\t' + repr(self.b))
                 stdlog.debug('')
                 # run "request" function
-                exec(func + '().request_' + self.protocol_version +'(self)')
+                await interface.request_v4(self)
+                #exec(func + '().request_' + self.protocol_version +'(self)')
             except (TypeError, XDRError, AttributeError, EOFError):
                 self.error =  const.NDMP_XDR_DECODE_ERR
                 stdlog.error('Error processing message ' + message + '_request_' + 

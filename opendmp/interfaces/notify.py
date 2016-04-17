@@ -12,7 +12,7 @@ class connection_status():
         attempt.'''
 
     @ut.post('ndmp_notify_connected_request',const.NDMP_NOTIFY_CONNECTION_STATUS)
-    def post(self, record, shutdown=False):
+    async def post(self, record, shutdown=False):
         record.post_header.sequence = 1
         record.post_header.reply_sequence = 0
         # Body
@@ -29,7 +29,7 @@ class data_halted():
         halted.'''
 
     @ut.post('ndmp_notify_data_halted_request', const.NDMP_NOTIFY_DATA_HALTED)
-    def post(self, record):
+    async def post(self, record):
         record.post_body.reason = record.data['halt_reason']
         record.post_body.text_reason = record.data['text_reason']
 
@@ -38,7 +38,7 @@ class data_read():
         read data from a remote Tape Server'''
 
     @ut.post('ndmp_notify_data_read_request', const.NDMP_NOTIFY_DATA_READ)
-    def post(self, record):
+    async def post(self, record):
         record.post_body.offset = ut.long_long_to_quad(record.data['offset'])
         record.post_body.length = ut.long_long_to_quad(record.data['length'])
 
@@ -48,7 +48,7 @@ class mover_halted():
         entered the halted state.'''
     
     @ut.post('ndmp_notify_mover_halted_request', const.NDMP_NOTIFY_MOVER_HALTED)
-    def post(self, record):
+    async def post(self, record):
         record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
         record.post_body.reason = record.mover['halt_reason']
         record.post_body.text_reason = record.mover['text_reason']
@@ -59,7 +59,7 @@ class mover_paused():
         paused.'''
     
     @ut.post('ndmp_notify_mover_paused_request', const.NDMP_NOTIFY_MOVER_PAUSED)
-    def post(self, record):
+    async def post(self, record):
         record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
         record.post_body.reason = record.mover['pause_reason']
         record.post_body.seek_position = ut.long_long_to_quad(record.mover['seek_position'])
