@@ -106,19 +106,15 @@ class listen():
     
     @ut.valid_state(const.NDMP_MOVER_STATE_IDLE)
     async def request_v4(self, record):
+        import functools
         self.record = record
         record.mover['addr_type'] = record.b.addr_type
         record.mover['mode'] = record.b.mode
         if record.mover['addr_type'] == const.NDMP_ADDR_TCP:
             fd = ip.get_next_data_conn()
             (record.mover['host'], record.mover['port']) = fd.getsockname()
-            fd.close()
-            record.mover['server'] = MoverServer(record)
-            await record.loop.create_server(lambda: self.record.mover['server'],
-                                                        record.mover['host'],
-                                                        record.mover['port'])
+            record.mover['server'] = await record.loop.create_server(functools.partial(MoverServer, record),sock=fd)
             record.mover['state'] = const.NDMP_MOVER_STATE_LISTEN
-            
         else:
             record.error = const.NDMP_NOT_SUPPORTED_ERR
             
@@ -227,7 +223,6 @@ class stop():
     
     @ut.valid_state(const.NDMP_MOVER_STATE_IDLE, False)
     async def reply_v4(self, record):
-        record.mover['server'].transport.close()
         record.mover['mode'] = const.NDMP_MOVER_MODE_NOACTION
         record.mover['state'] = const.NDMP_MOVER_STATE_IDLE
         record.mover['halt_reason'] = const.NDMP_MOVER_HALT_NA
@@ -247,7 +242,7 @@ class abort():
     
     @ut.valid_state(const.NDMP_MOVER_STATE_IDLE, False)
     async def reply_v4(self, record):
-        record.mover['server'].transport.close()
+        record.mover['server'].close()
         record.mover['mode'] = const.NDMP_MOVER_MODE_NOACTION
         record.mover['state'] = const.NDMP_MOVER_STATE_HALTED
         record.mover['halt_reason'] = const.NDMP_MOVER_HALT_ABORTED

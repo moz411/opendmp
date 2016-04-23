@@ -16,6 +16,7 @@ class MoverServer(asyncio.Protocol):
         self.transport = transport
         stdlog.info('MOVER> Connected to ' + repr(self.transport.get_extra_info('peername')))
         self.record.mover['state'] = const.NDMP_MOVER_STATE_ACTIVE
+        self.record.mover['server'].close()
         
     def data_received(self, data):
         self.record.device.write(data)

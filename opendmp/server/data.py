@@ -21,7 +21,6 @@ class DataServer(asyncio.Protocol):
             
     def connection_lost(self, exc):
         stdlog.info('DATA> ' + repr(self.transport.get_extra_info('peername')) + ' closed the connection')
-        self.transport.close()
         
     def pause_writing(self):
         stdlog.debug(repr(self) + ' pause writing')

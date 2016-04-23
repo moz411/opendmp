@@ -7,7 +7,7 @@ of data that can be written to the tape device.
 '''
 from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config
-import asyncio, re, shlex
+import asyncio, re, shlex, os
 from server.data import DataServer
 from interfaces import notify
 from xdr import ndmp_const as const, ndmp_type as type
@@ -126,10 +126,10 @@ class start_backup(asyncio.SubprocessProtocol):
         args = re.sub('FILESYSTEM', record.bu['bu'].env['FILESYSTEM'], args)
         args = shlex.split(executable + ' ' + args)
         
-        (transport,_) = await record.loop.subprocess_exec(lambda: record.bu['bu'], 
-                                       stdout=asyncio.subprocess.PIPE,
-                                       stderr=asyncio.subprocess.PIPE,
-                                       *args)
+        env = os.environ.copy()
+        env['LANG'] = 'en_US.UTF-8'
+        
+        await record.loop.subprocess_exec(lambda: record.bu['bu'], env=env,*args)
         
         stdlog.info('Starting backup of ' + record.bu['bu'].env['FILESYSTEM'])
         
@@ -188,7 +188,7 @@ class get_state():
         record.b.operation = record.data['operation']
         record.b.halt_reason = record.data['halt_reason']
         record.b.bytes_processed = ut.long_long_to_quad(bytes_moved)
-        # record.b.est_bytes_remain = ut.long_long_to_quad(remain)
+        #TODO: record.b.est_bytes_remain = ut.long_long_to_quad(remain)
         record.b.est_bytes_remain = ut.long_long_to_quad(0)
         record.b.est_time_remain = 0
         record.b.invalid = 0
@@ -211,8 +211,6 @@ class get_state():
         stdlog.info('Bytes processed: ' + repr(bytes_moved))
 
     reply_v3 = reply_v4
-    
-    
 
 class get_env():
     '''This request is used by the DMA to obtain the backup environment

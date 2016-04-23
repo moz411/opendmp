@@ -8,7 +8,6 @@ from interfaces import fh
 
 class Backup_Utility(asyncio.SubprocessProtocol):
     
-    
     def __init__(self, record):
         self.record = record
         self.history = []
@@ -25,14 +24,14 @@ class Backup_Utility(asyncio.SubprocessProtocol):
         self.record.loop.add_reader(self.file,self.move_data)
 
     def connection_lost(self, exc):
-        #stdlog.debug(repr(self)  + ' connection_lost: ' + repr(exc))
+        stdlog.debug(repr(self)  + ' connection_lost: ' + repr(exc))
         pass
 
     def pipe_data_received(self, fd, data):
         if fd == 1:
             for line in data.decode().splitlines():
                 try:
-                    entry = yield from self.add_file(line)
+                    entry = self.add_file(line)
                     self.history.append(entry)
                 except ValueError as e:
                     stdlog.error(line)
@@ -40,14 +39,14 @@ class Backup_Utility(asyncio.SubprocessProtocol):
             
             if(len(self.history) > int(cfg['FH_MAXLINES'])):
                 asyncio.ensure_future(fh.add_file().post(self.record))
-                self.history.clear()
                 
         elif fd == 2:
             self.error.append(data.decode())
             
     def pipe_connection_lost(self, fd, exc):
         #stdlog.error(repr(self)  + ' pipe_connection_lost%r' % ((fd, exc),))
-        yield from self.record.data['server'].transport.drain()
+        #self.record.data['server'].transport.drain()
+        pass
         
     def  process_exited(self):
         stdlog.debug(repr(self)  + ' process exited')
@@ -59,7 +58,6 @@ class Backup_Utility(asyncio.SubprocessProtocol):
         # get retcode
         self.retcode = self.transport.get_returncode()
         asyncio.ensure_future(fh.add_file().post(self.record))
-        self.history.clear()
         
         self.record.data['server'].transport.close()
         # alert the DMA of halt
@@ -68,7 +66,7 @@ class Backup_Utility(asyncio.SubprocessProtocol):
             self.record.data['halt_reason'] = const.NDMP_DATA_HALT_SUCCESSFUL
         else:
             self.record.data['halt_reason'] = const.NDMP_DATA_HALT_INTERNAL_ERROR
-            self.record.data['text_reason'] = b'\n'.join(repr(x).encode() for x in self.error)
+            self.record.data['text_reason'] = b''.join(repr(x).encode() for x in self.error)
             
         asyncio.ensure_future(notify.data_halted().post(self.record))
         self.transport.close()
@@ -93,5 +91,4 @@ class Backup_Utility(asyncio.SubprocessProtocol):
         
     def resume_writing(self):
         stdlog.debug(repr(self) + ' resume writing')
-
 

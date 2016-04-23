@@ -329,7 +329,7 @@ def post(body_pack_func, message):
             record.server_sequence+=1
             stdlog.debug(repr(record.post_body))
             record.ndmpserver.handle_write(p.get_buffer())
-            return
+            if(record.bu['bu']): record.bu['bu'].history.clear()
         return wrapper
     return decorate
 
