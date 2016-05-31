@@ -46,6 +46,7 @@ class Record():
                 'addr_type': const.NDMP_ADDR_LOCAL,
                 'halt_reason': const.NDMP_DATA_HALT_NA,
                 'text_reason': b'Finished',
+                'buffer': bytearray(int(cfg['BUFSIZE'])*5),
                 'server': None,
                 'reader': None,
                 'writer': None,
@@ -63,6 +64,7 @@ class Record():
                 'peer': None,
                 'record_size': 0,
                 'record_num': 0,
+                'buffer': bytearray(int(cfg['BUFSIZE'])),
                 'bytes_moved': 0,
                 'seek_position': 0,
                 'bytes_left_to_read': 0,
@@ -73,7 +75,6 @@ class Record():
                 'history': None}
         
         self.tape = {'path': None,
-                'data': None,
                 'fd': None,
                 'hctl': None,
                 'opened': False,
@@ -81,7 +82,11 @@ class Record():
                 'mt': None,
                 'datain_len': None,
                 'mode': None,
-                'count': 0}
+                'count': 0,
+                'read': None,
+                'write': None,
+                'server': None}
+        
         self.bu = {'utility':None,
                 'bu': None,
                 'env': None,
@@ -204,7 +209,6 @@ class Record():
             
             try:
                 #run "reply" function
-                #exec(func + '().reply_' + self.protocol_version + '(self)')
                 await interface.reply_v4(self)
             except:
                 self.error =  const.NDMP_NOT_SUPPORTED_ERR

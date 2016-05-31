@@ -1,4 +1,4 @@
-'''This module create a asyncore Consumer for Data operations 
+'''This module create an asyncio Consumer for Data operations 
 and process the data stream'''
 
 from tools.log import Log; stdlog = Log.stdlog

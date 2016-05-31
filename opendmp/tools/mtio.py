@@ -12,7 +12,7 @@ from fcntl import ioctl
 from os import errno
 
 # mag tape io control commands
-def MTIOCTOP(record):
+async def MTIOCTOP(record):
     '''do a mag tape op'''
     if(record.b.tape_op not in [const.NDMP_MTIO_REW, const.NDMP_MTIO_OFF,
                             const.NDMP_MTIO_TUR, const.NDMP_MTIO_FSF,
@@ -29,10 +29,10 @@ def MTIOCTOP(record):
     mtop.mt_count = record.b.count
     io = _IOW('m', 1, mtop)
     try:
-        ioctl(record.device.fd, io, mtop)
+        ioctl(record.tape['fd'], io, mtop)
     except (OSError, IOError) as e:
         stdlog.error(const.ndmp_tape_mtio_op[record.b.tape_op] + 
-                     ' failed for ' + record.device.path + ': ' + e.strerror)
+                     ' failed for ' + record.tape['path'] + ': ' + e.strerror)
         if(e.errno == 123): # No medium
             record.error = const.NDMP_NO_TAPE_LOADED_ERR
         elif(e.errno == errno.EACCES):
@@ -41,7 +41,7 @@ def MTIOCTOP(record):
             record.error = const.NDMP_IO_ERR
     return mtop
 
-def MTIOCGET(record):
+async def MTIOCGET(record):
     '''get tape status'''
     mt = {}
     buf = create_string_buffer(sizeof(MTGET))
@@ -49,23 +49,23 @@ def MTIOCGET(record):
     mtget = MTGET.from_buffer(buf)
     io = _IOR('m', 2, mtget)
     try:
-        ioctl(record.device.fd, io, mtget)
+        ioctl(record.tape['fd'], io, mtget)
     except (OSError, IOError) as e:
         if(e.errno == 123): # No medium
             record.error = const.NDMP_NO_TAPE_LOADED_ERR
         elif(e.errno == errno.EACCES):
             record.error = const.NDMP_WRITE_PROTECT_ERR
-        stdlog.error('mtio GET failed for ' + record.device.path + ': ' + e.strerror)
+        stdlog.error('mtio GET failed for ' + record.tape['path'] + ': ' + e.strerror)
     except Exception as e:
         record.error = const.NDMP_IO_ERR
-        stdlog.error('mtio GET failed for ' + record.device.path + ': ' + e.strerror)
+        stdlog.error('mtio GET failed for ' + record.tape['path'] + ': ' + e.strerror)
     mt['unsupported'] = const.NDMP_TAPE_STATE_TOTAL_SPACE_INVALID | const.NDMP_TAPE_STATE_SPACE_REMAIN_INVALID
     if(bool(GMT_WR_PROT(mtget.mt_gstat))):
         mt['flags'] = const.NDMP_TAPE_STATE_WR_PROT
         record.error = const.NDMP_WRITE_PROTECT_ERR
     else:
         mt['flags'] = 0
-        
+
     mt['resid'] = mtget.mt_resid
     mt['file_num'] = mtget.mt_fileno
     mt['soft_errors'] = _IOC_SOFTERR(mtget.mt_erreg) # decode MT_ST_SOFTERR_SHIFT and MT_ST_SOFTERR_MASK
@@ -80,10 +80,10 @@ def MTIOCPOS(record):
     buf = create_string_buffer(sizeof(MTPOS))
     memset(buf, 0, sizeof(MTPOS))
     mtpos = MTPOS.from_buffer(buf)
-    mtpos.lmt_blkno = record.device.mt['blkno']
+    mtpos.lmt_blkno = record.tape['mt']['blkno']
     io = _IOR('m', 3, mtpos)
-    ioctl(record.device.fd, io, mtpos)
-    record.device.mtio = mtpos
+    ioctl(record.tape['fd'], io, mtpos)
+    record.tape['mtio'] = mtpos
 
 class MTOP(Structure):
     '''structure for MTIOCTOP - mag tape op command '''

@@ -23,19 +23,8 @@ class set_record_size():
         record.mover['record_size'] = record.b.len
         record.mover['window_length'] = 0
         record.mover['window_offset'] = 0
-        
-        # Set the socket buffer to a multiple of recordsize, max 64k
-        if record.mover['record_size'] < 65536:
-            record.mover['bufsize'] = record.mover['record_size']
-        else:
-            from fractions import gcd
-            record.mover['bufsize'] = gcd(record.mover['record_size'],65536)
-        if record.mover['bufsize'] not in range(1024, 65536, 1024):
-            stdlog.error('Tape block size not a multiple of 1024')
-            record.error = const.NDMP_ILLEGAL_STATE_ERR
-        else:
-            stdlog.info('Will use a socket buffer of ' + 
-                        repr(record.mover['bufsize']))
+        stdlog.info('MOVER> Will use a tape block length of ' + repr(record.mover['record_size']) + ' bytes')
+            
 
     async def reply_v4(self, record):
         pass

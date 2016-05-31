@@ -11,7 +11,7 @@ from tools.log import Log; stdlog = Log.stdlog
 from tools.config import Config; cfg = Config.cfg; c = Config 
 import xdr.ndmp_const as const
 import tools.utils as ut
-from tools.device import Device
+from server.tape import Device
 from tools import cdb
 from ctypes import string_at
 

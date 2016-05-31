@@ -38,26 +38,7 @@ def list_devices():
         except FileNotFoundError: # Not changers
             pass
     return devices
-        
 
-def check_device_opened(record):
-    try:
-        assert(record.device.opened == True)
-        return True
-    except (AttributeError, AssertionError):
-        record.error = const.NDMP_DEV_NOT_OPEN_ERR
-        stdlog.error('device not opened')
-        return False
-    
-def check_device_not_opened(record):
-    try:
-        assert(record.device.opened == True)
-        record.error = const.NDMP_DEVICE_OPENED_ERR
-        stdlog.error('device already opened')
-        return True
-    except (AttributeError, AssertionError):
-        return False
-        
 def add_hctl_linux(record):
     # a full check of all devices is done every time in case the host
     # have reorganized its SCSI devices
@@ -171,7 +152,6 @@ def long_long_to_quad(d):
 def quad_to_long_long(q):
         return ((q.high >> 32) + q.low)
 
-
 def approximate_size(size, a_kilobyte_is_1024_bytes=True):
     '''From diveintopython3 :-)'''
     SUFFIXES = {1000: ['KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'],
@@ -281,9 +261,7 @@ def compute_incremental(dumpdates, filesystem, level):
     return tstamp
     
 def valid_state(state, reverse=True):
-    '''
-    A decorator that validate the Mover or Data session state
-    '''
+    ''' A decorator that validate the Mover or Data session state '''
     if isinstance(state, int):
         state = [state]
         
@@ -338,51 +316,37 @@ def try_io(func):
     A decorator that encapsulate the os.io operations
     and catch os errors
     '''
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            r = func(*args, **kwargs)
-        except (OSError, IOError) as e:
-            stdlog.error(e.strerror)
-            if(e.errno == errno.EACCES):
-                error = const.NDMP_WRITE_PROTECT_ERR
-            elif(e.errno == errno.ENOENT):
-                error = const.NDMP_NO_DEVICE_ERR
-            elif(e.errno == errno.EBUSY):
-                error = const.NDMP_DEVICE_BUSY_ERR
-            elif(e.errno == errno.ENODEV):
-                error = const.NDMP_NO_DEVICE_ERR
-            elif(e.errno == errno.ENOSPC):
-                error = const.NDMP_EOM_ERR
-                #record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
-                #record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
-                #try:
-                #    record.device.fd.flush()
-                #except BlockingIOError as e:
-                #    stdlog.debug(e)
-            elif(e.errno == 123):
-                error = const.NDMP_NO_TAPE_LOADED_ERR
-            else:
-                error = const.NDMP_IO_ERR
-        else:
-            return r
-    return wrapper
-
-def device_opened(func):
-    '''
-    A decorator that print a log if device is not opened
-    '''
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        record = args[1]
-        try:
-            r = func(*args, **kwargs)
-        except TypeError:
-            stdlog.info('device ' + record.device.path + ' not opened')
-        else:
-            return r
-    return wrapper
-
+    def decorate(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            record = args[1]
+            try:
+                yield from func(*args, **kwargs)
+            except (OSError, IOError) as e:
+                stdlog.error(e.strerror)
+                if(e.errno == errno.EACCES):
+                    record.error = const.NDMP_WRITE_PROTECT_ERR
+                elif(e.errno == errno.ENOENT):
+                    record.error = const.NDMP_NO_DEVICE_ERR
+                elif(e.errno == errno.EBUSY):
+                    record.error = const.NDMP_DEVICE_BUSY_ERR
+                elif(e.errno == errno.ENODEV):
+                    record.error = const.NDMP_NO_DEVICE_ERR
+                elif(e.errno == errno.ENOSPC):
+                    record.error = const.NDMP_EOM_ERR
+                    #record.mover['pause_reason'] = const.NDMP_MOVER_PAUSE_EOM
+                    #record.mover['state'] = const.NDMP_MOVER_STATE_PAUSED
+                    #try:
+                    #    record.device.fd.flush()
+                    #except BlockingIOError as e:
+                    #    stdlog.debug(e)
+                elif(e.errno == 123):
+                    record.error = const.NDMP_NO_TAPE_LOADED_ERR
+                else:
+                    record.error = const.NDMP_IO_ERR
+        return wrapper
+    return decorate
+ 
 def find_interface(package, name, func=None):
     '''Find the module to import corresponding to the message
     Create an instance of the parent class in interfaces package'''

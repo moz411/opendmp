@@ -14,14 +14,16 @@ class Backup_Utility(asyncio.SubprocessProtocol):
         self.error = []
         self.env = {}
         self.fifo = ut.give_fifo()
+        self.bufsize = int(cfg['BUFSIZE'])
         self.recvd = 0
         self.retcode = None
         self.file = os.open(self.fifo, os.O_RDONLY|os.O_NONBLOCK)
+        self.file2 = os.fdopen(self.file, 'rb')
         
     def connection_made(self, transport):
         self.transport = transport
         stdlog.debug(repr(self) + ' connection_made')
-        self.record.loop.add_reader(self.file,self.move_data)
+        self.record.loop.add_reader(self.file,self.copy_data)
 
     def connection_lost(self, exc):
         stdlog.debug(repr(self)  + ' connection_lost: ' + repr(exc))
@@ -50,16 +52,20 @@ class Backup_Utility(asyncio.SubprocessProtocol):
         
     def  process_exited(self):
         stdlog.debug(repr(self)  + ' process exited')
-        ut.clean_fifo(self.fifo)
-        # remove reader
-        self.record.loop.remove_reader(self.file)
-        # close fifo
-        os.close(self.file)
         # get retcode
         self.retcode = self.transport.get_returncode()
         asyncio.ensure_future(fh.add_file().post(self.record))
         
+        # close socket to Mover
         self.record.data['server'].transport.close()
+        
+        # remove reader
+        self.record.loop.remove_reader(self.file)
+        # close fifo
+        os.close(self.file)
+        # remove the fifo
+        ut.clean_fifo(self.fifo)
+        
         # alert the DMA of halt
         self.record.data['state'] = const.NDMP_DATA_STATE_HALTED
         if self.retcode == 0:
@@ -69,22 +75,19 @@ class Backup_Utility(asyncio.SubprocessProtocol):
             self.record.data['text_reason'] = b''.join(repr(x).encode() for x in self.error)
             
         asyncio.ensure_future(notify.data_halted().post(self.record))
-        self.transport.close()
         
     def update_dumpdate(self):            
         try:
             # Update dumpdates
-            self.dumpdates.update({(self.env['FILESYSTEM'],
-                                                   self.env['LEVEL']):int(time.time())})
+            self.dumpdates.update({(self.env['FILESYSTEM'], self.env['LEVEL']):int(time.time())})
             ut.write_dumpdates('.'.join([cfg['DUMPDATES'], self.record.data['bu_type']]),
                                self.record.data['dumpdates'])
         except (OSError, ValueError, UnboundLocalError) as e:
             stdlog.error('update dumpdate failed' + repr(e))
             
-    def move_data(self):
-        data = os.read(self.file, self.record.bufsize)
-        self.record.data['server'].transport.write(data)
-        self.record.data['bytes_moved'] += len(data)
+    def copy_data(self):
+        self.record.data['bytes_moved'] += self.file2.readinto(self.record.data['buffer'])
+        self.record.data['server'].transport.write(self.record.data['buffer'])
         
     def pause_writing(self):
         stdlog.debug(repr(self) + ' pause writing')

@@ -16,7 +16,6 @@ from tools.log import Log; stdlog = Log.stdlog
 import hashlib
 import xdr.ndmp_const as const
 from xdr.ndmp_type import ndmp_auth_data, ndmp_auth_md5
-import asyncio
 
 
 class open():
