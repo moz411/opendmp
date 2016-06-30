@@ -311,6 +311,24 @@ def post(body_pack_func, message):
         return wrapper
     return decorate
 
+def opened(reversed=False):
+    ''' A decorator that validate if a device is opened '''
+    def decorate(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            record = args[1]
+            if not record.device['path']:
+                record.device['path'] record.b.device.decode()
+            if record.device['path'] not in list_devices():
+                stdlog.error('Access to device ' + record.device['path'] + ' not allowed')
+                record.error = const.NDMP_NOT_AUTHORIZED_ERR
+            elif (reversed and not record.device['opened']):
+                
+            else:
+                await func(*args, **kwargs)
+        return wrapper
+    return decorate
+
 def try_io(func):
     '''
     A decorator that encapsulate the os.io operations

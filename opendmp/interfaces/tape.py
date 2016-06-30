@@ -20,10 +20,6 @@ class open():
     
     async def request_v4(self, record):
         record.tape['path'] = record.b.device.decode()
-        if record.tape['path'] not in ut.list_devices():
-                stdlog.error('Access to device ' + record.tape['path'] + ' not allowed')
-                record.error = const.NDMP_PERMISSION_ERR
-                return
         if(record.b.mode == const.NDMP_TAPE_READ_MODE):
             #mode = 'rb'
             mode = os.O_RDONLY|os.O_NONBLOCK

@@ -24,7 +24,6 @@ class Record():
         self.dma_sequence = 0
         self.protocol_version = cfg['PREFERRED_NDMP_VERSION']
         self.connected = False
-        self.device = None
         self.bufsize = int(cfg['BUFSIZE'])
         self.p = NDMPPacker()
         self.u = NDMPUnpacker(b'None')
@@ -74,7 +73,7 @@ class Record():
         self.fh = {'files': [],
                 'history': None}
         
-        self.tape = {'path': None,
+        self.device = {'path': None,
                 'fd': None,
                 'hctl': None,
                 'opened': False,
@@ -86,6 +85,8 @@ class Record():
                 'read': None,
                 'write': None,
                 'server': None}
+        
+        self.tape = self.device
         
         self.bu = {'utility':None,
                 'bu': None,
